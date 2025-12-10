@@ -59,7 +59,10 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
     const speed = Math.max(100, 1000 - (level - 1) * 50);
     gameLoopRef.current = setInterval(() => {
-      moveDown();
+      setPosition(prev => {
+        const newPos = { x: prev.x, y: prev.y + 1 };
+        return newPos;
+      });
     }, speed);
 
     return () => {
@@ -67,49 +70,22 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         clearInterval(gameLoopRef.current);
       }
     };
-  }, [gameOver, isPaused, level, gameStarted, board, currentPiece, position]);
+  }, [gameOver, isPaused, level, gameStarted]);
 
-  const moveDown = useCallback(() => {
-    const newPosition = { x: position.x, y: position.y + 1 };
-    if (!checkCollision(board, { ...currentPiece, position: newPosition }, { x: 0, y: 0 })) {
-      setPosition(newPosition);
-    } else {
-      lockPiece();
+  // 衝突チェックとロック
+  useEffect(() => {
+    if (!gameStarted || gameOver || isPaused) return;
+
+    const pieceWithPosition = { ...currentPiece, position };
+    if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      // 1つ前の位置に戻してロック
+      const prevPosition = { x: position.x, y: position.y - 1 };
+      lockPiece(prevPosition);
     }
-  }, [board, currentPiece, position]);
+  }, [position, board, currentPiece, gameStarted, gameOver, isPaused]);
 
-  const moveLeft = useCallback(() => {
-    const newPosition = { x: position.x - 1, y: position.y };
-    if (!checkCollision(board, { ...currentPiece, position: newPosition }, { x: 0, y: 0 })) {
-      setPosition(newPosition);
-    }
-  }, [board, currentPiece, position]);
-
-  const moveRight = useCallback(() => {
-    const newPosition = { x: position.x + 1, y: position.y };
-    if (!checkCollision(board, { ...currentPiece, position: newPosition }, { x: 0, y: 0 })) {
-      setPosition(newPosition);
-    }
-  }, [board, currentPiece, position]);
-
-  const rotate = useCallback(() => {
-    const rotated = rotateTetromino(currentPiece);
-    if (!checkCollision(board, { ...rotated, position }, { x: 0, y: 0 })) {
-      setCurrentPiece(rotated);
-    }
-  }, [board, currentPiece, position]);
-
-  const hardDrop = useCallback(() => {
-    let newPosition = { ...position };
-    while (!checkCollision(board, { ...currentPiece, position: { x: newPosition.x, y: newPosition.y + 1 } }, { x: 0, y: 0 })) {
-      newPosition.y++;
-    }
-    setPosition(newPosition);
-    setTimeout(() => lockPiece(), 50);
-  }, [board, currentPiece, position]);
-
-  const lockPiece = useCallback(() => {
-    const pieceToMerge = { ...currentPiece, position: position };
+  const lockPiece = useCallback((lockPosition: Position) => {
+    const pieceToMerge = { ...currentPiece, position: lockPosition };
     const newBoard = mergeTetromino(board, pieceToMerge);
     const { board: clearedBoard, linesCleared } = clearLines(newBoard);
     
@@ -134,7 +110,57 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setCurrentPiece(newPiece);
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
-  }, [board, currentPiece, nextPiece, position, level, score, lines, onGameOver]);
+  }, [board, currentPiece, nextPiece, level, score, lines, onGameOver]);
+
+  const moveLeft = useCallback(() => {
+    if (isPaused) return;
+    const newPosition = { x: position.x - 1, y: position.y };
+    const pieceWithPosition = { ...currentPiece, position: newPosition };
+    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    }
+  }, [board, currentPiece, position, isPaused]);
+
+  const moveRight = useCallback(() => {
+    if (isPaused) return;
+    const newPosition = { x: position.x + 1, y: position.y };
+    const pieceWithPosition = { ...currentPiece, position: newPosition };
+    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    }
+  }, [board, currentPiece, position, isPaused]);
+
+  const moveDown = useCallback(() => {
+    if (isPaused) return;
+    const newPosition = { x: position.x, y: position.y + 1 };
+    const pieceWithPosition = { ...currentPiece, position: newPosition };
+    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    }
+  }, [board, currentPiece, position, isPaused]);
+
+  const rotate = useCallback(() => {
+    if (isPaused) return;
+    const rotated = rotateTetromino(currentPiece);
+    const rotatedWithPosition = { ...rotated, position };
+    if (!checkCollision(board, rotatedWithPosition, { x: 0, y: 0 })) {
+      setCurrentPiece(rotated);
+    }
+  }, [board, currentPiece, position, isPaused]);
+
+  const hardDrop = useCallback(() => {
+    if (isPaused) return;
+    let dropPosition = { ...position };
+    while (true) {
+      const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
+      const pieceWithPosition = { ...currentPiece, position: nextPos };
+      if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+        break;
+      }
+      dropPosition = nextPos;
+    }
+    setPosition(dropPosition);
+  }, [board, currentPiece, position, isPaused]);
 
   // キーボード操作
   useEffect(() => {
@@ -296,17 +322,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             {renderNextPiece()}
           </div>
 
-          {/* 操作説明 */}
-          <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-purple-400/20">
-            <p className="text-xs text-purple-300 mb-1">操作</p>
-            <div className="text-xs text-white space-y-0.5">
-              <p>← → 移動</p>
-              <p>↑ 回転</p>
-              <p>↓ 落下</p>
-              <p>Space ハードドロップ</p>
-            </div>
-          </div>
-
           {/* ボタン */}
           <div className="space-y-1.5">
             {!gameStarted ? (
@@ -329,7 +344,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       </div>
 
       {/* タッチ操作ボタン (画面下部) */}
-      {gameStarted && !gameOver && (
+      {gameStarted && !gameOver && !isPaused && (
         <div className="mt-4 flex gap-2">
           <button
             onClick={rotate}

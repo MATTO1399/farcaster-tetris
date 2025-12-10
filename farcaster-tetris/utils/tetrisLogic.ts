@@ -103,7 +103,7 @@ export const mergeTetromino = (
         const boardY = tetromino.position.y + y;
         const boardX = tetromino.position.x + x;
         if (boardY >= 0 && boardY < BOARD_HEIGHT) {
-          newBoard[boardY][boardX] = tetromino.color;
+          newBoard[boardY][boardX] = tetromino.type;  // ✅ color → type に修正!
         }
       }
     }
