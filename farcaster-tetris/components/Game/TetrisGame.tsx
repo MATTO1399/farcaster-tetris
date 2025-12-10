@@ -181,7 +181,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         case 'ArrowUp':
           rotate();
           break;
-        case ' ':
+        case ' ': // スペースキー
           hardDrop();
           break;
       }
@@ -269,12 +269,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen w-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800 overflow-hidden">
-      {/* タイトル */}
-      <div className="text-center mb-3">
-        <h1 className="text-2xl font-bold text-white drop-shadow-lg">TETRIS</h1>
-      </div>
-
+    <div className="flex flex-col items-center justify-start min-h-screen w-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800 overflow-hidden pt-4">
       {/* メインゲームエリア */}
       <div className="flex items-center justify-center gap-3">
         {/* ゲームボード */}
@@ -343,41 +338,44 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
       </div>
 
-      {/* タッチ操作ボタン (画面下部) */}
-      {gameStarted && !gameOver && !isPaused && (
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={rotate}
-            className="w-16 h-16 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-xl transition-colors"
-          >
-            ↻
-          </button>
-          <button
-            onClick={moveLeft}
-            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xl transition-colors"
-          >
-            ←
-          </button>
-          <button
-            onClick={moveDown}
-            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xl transition-colors"
-          >
-            ↓
-          </button>
-          <button
-            onClick={moveRight}
-            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors text-xl"
-          >
-            →
-          </button>
-          <button
-            onClick={hardDrop}
-            className="w-16 h-16 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold transition-colors text-sm"
-          >
-            DROP
-          </button>
-        </div>
-      )}
+      {/* タッチ操作ボタン (余白を大幅に縮小) */}
+      <div className="mt-2 mb-2 flex gap-2">
+        <button
+          onClick={rotate}
+          disabled={!gameStarted || gameOver || isPaused}
+          className="w-16 h-16 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold text-xl transition-colors"
+        >
+          ↻
+        </button>
+        <button
+          onClick={moveLeft}
+          disabled={!gameStarted || gameOver || isPaused}
+          className="w-16 h-16 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold text-xl transition-colors"
+        >
+          ←
+        </button>
+        <button
+          onClick={moveDown}
+          disabled={!gameStarted || gameOver || isPaused}
+          className="w-16 h-16 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold text-xl transition-colors"
+        >
+          ↓
+        </button>
+        <button
+          onClick={moveRight}
+          disabled={!gameStarted || gameOver || isPaused}
+          className="w-16 h-16 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors text-xl"
+        >
+          →
+        </button>
+        <button
+          onClick={hardDrop}
+          disabled={!gameStarted || gameOver || isPaused}
+          className="w-16 h-16 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors text-sm"
+        >
+          DROP
+        </button>
+      </div>
     </div>
   );
 };
