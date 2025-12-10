@@ -141,3 +141,17 @@ export const calculateScore = (linesCleared: number, level: number): number => {
 export const isGameOver = (board: Board, tetromino: Tetromino): boolean => {
   return checkCollision(board, tetromino);
 };
+
+// テトリミノの色を取得
+export const getTetrominoColor = (type: string): string => {
+  const tetrominoMap: Record<string, string> = {
+    'I': TETROMINOS.I.color,
+    'O': TETROMINOS.O.color,
+    'T': TETROMINOS.T.color,
+    'S': TETROMINOS.S.color,
+    'Z': TETROMINOS.Z.color,
+    'J': TETROMINOS.J.color,
+    'L': TETROMINOS.L.color,
+  };
+  return tetrominoMap[type] || '#888888';
+};
