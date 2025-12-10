@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import sdk from '@farcaster/frame-sdk';
 import {
   createBoard,
   getRandomTetromino,
@@ -39,6 +40,21 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Farcaster SDK初期化
+  useEffect(() => {
+    const initFarcaster = async () => {
+      try {
+        const context = await sdk.context;
+        console.log('Farcaster context:', context);
+        sdk.actions.ready(); // スプラッシュスクリーンを非表示
+      } catch (error) {
+        console.error('Farcaster SDK error:', error);
+        // Farcaster外でも動作するようにエラーを無視
+      }
+    };
+    initFarcaster();
+  }, []);
 
   // ゲーム初期化
   const initGame = useCallback(() => {
@@ -306,6 +322,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                 outlineOffset: '0px',
               }}
               className="bg-gray-900 rounded-lg shadow-xl relative overflow-hidden"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
             >
               {displayBoard.map((row, y) => (
                 <div key={y} className="flex">

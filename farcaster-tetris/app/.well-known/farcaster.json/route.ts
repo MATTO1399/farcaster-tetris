@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   return NextResponse.json({
     accountAssociation: {
-      header: "eyJmaWQiOjEyMzQ1LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4MTIzNDU2Nzg5MGFiY2RlZiJ9",
-      payload: "eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9",
-      signature: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+      header: "eyJmaWQiOjE4OTk0LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4M2RjNzgxQzg1NzExNGJDNjgzRTJCMzY2M2JDOTA0OGU1YkE3ODE3MSJ9",
+      payload: "eyJkb21haW4iOiJmYXJjYXN0ZXItdGV0cmlzLnZlcmNlbC5hcHAifQ",
+      signature: "cfCmm1OsTTL5apfOjSRPHNXeVKBXhijtg6RfGBS8tVIgTpjmbzQxf10IBpQrWKc4KA9/t3fvZuh3VyHj33MAZxs="
     },
     frame: {
       version: "1",
