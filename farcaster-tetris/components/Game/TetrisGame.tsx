@@ -11,35 +11,27 @@ import {
   clearLines,
   calculateScore,
   isGameOver,
-  type Board,
-  type Tetromino,
+  getTetrominoColor
 } from '@/utils/tetrisLogic';
-import {
-  BOARD_WIDTH,
-  BOARD_HEIGHT,
-  CELL_SIZE,
-  INITIAL_SPEED,
-  SPEED_INCREMENT,
-  NFT_THRESHOLD_SCORE,
-} from '@/utils/constants';
+import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
+import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
 
 interface TetrisGameProps {
   onGameOver?: (score: number) => void;
 }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  const [board, setBoard] = useState<Board>(createBoard());
-  const [currentTetromino, setCurrentTetromino] = useState<Tetromino | null>(null);
-  const [nextTetromino, setNextTetromino] = useState<Tetromino | null>(null);
+  const [board, setBoard] = useState<Board>(() => createBoard());
+  const [currentPiece, setCurrentPiece] = useState<Tetromino>(getRandomTetromino());
+  const [nextPiece, setNextPiece] = useState<Tetromino>(getRandomTetromino());
+  const [position, setPosition] = useState<Position>({ x: 3, y: 0 });
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
   const [lines, setLines] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-  
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Farcaster SDK初期化
   useEffect(() => {
@@ -47,151 +39,27 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       try {
         const context = await sdk.context;
         console.log('Farcaster context:', context);
-        sdk.actions.ready(); // スプラッシュスクリーンを非表示
+        sdk.actions.ready();
       } catch (error) {
         console.error('Farcaster SDK error:', error);
-        // Farcaster外でも動作するようにエラーを無視
       }
     };
     initFarcaster();
   }, []);
 
-  // ゲーム初期化
-  const initGame = useCallback(() => {
-    setBoard(createBoard());
-    setCurrentTetromino(getRandomTetromino());
-    setNextTetromino(getRandomTetromino());
-    setScore(0);
-    setLevel(1);
-    setLines(0);
-    setGameOver(false);
-    setIsPaused(false);
-    setGameStarted(true);
-  }, []);
-
-  // テトリミノを移動
-  const moveTetromino = useCallback(
-    (dx: number, dy: number) => {
-      if (!currentTetromino || gameOver || isPaused) return false;
-
-      const newTetromino = {
-        ...currentTetromino,
-        position: {
-          x: currentTetromino.position.x + dx,
-          y: currentTetromino.position.y + dy,
-        },
-      };
-
-      if (!checkCollision(board, newTetromino)) {
-        setCurrentTetromino(newTetromino);
-        
-        // ソフトドロップのスコア
-        if (dy > 0) {
-          setScore((prev) => prev + dy);
-        }
-        
-        return true;
-      }
-
-      return false;
-    },
-    [currentTetromino, board, gameOver, isPaused]
-  );
-
-  // テトリミノを回転
-  const rotate = useCallback(() => {
-    if (!currentTetromino || gameOver || isPaused) return;
-
-    const rotated = rotateTetromino(currentTetromino);
-
-    // 回転後に壁に当たる場合、位置を調整（ウォールキック）
-    let offset = 0;
-    while (checkCollision(board, rotated, { x: offset, y: 0 }) && Math.abs(offset) < 3) {
-      offset = offset > 0 ? -(offset + 1) : -offset + 1;
-    }
-
-    if (!checkCollision(board, rotated, { x: offset, y: 0 })) {
-      setCurrentTetromino({
-        ...rotated,
-        position: {
-          ...rotated.position,
-          x: rotated.position.x + offset,
-        },
-      });
-    }
-  }, [currentTetromino, board, gameOver, isPaused]);
-
-  // ハードドロップ
-  const hardDrop = useCallback(() => {
-    if (!currentTetromino || gameOver || isPaused) return;
-
-    let dropDistance = 0;
-    let testTetromino = { ...currentTetromino };
-
-    while (!checkCollision(board, testTetromino, { x: 0, y: 1 })) {
-      testTetromino.position.y++;
-      dropDistance++;
-    }
-
-    setCurrentTetromino(testTetromino);
-    setScore((prev) => prev + dropDistance * 2);
-
-    // 即座に固定
-    setTimeout(() => lockTetromino(), 0);
-  }, [currentTetromino, board, gameOver, isPaused]);
-
-  // テトリミノを固定
-  const lockTetromino = useCallback(() => {
-    if (!currentTetromino || !nextTetromino) return;
-
-    const mergedBoard = mergeTetromino(board, currentTetromino);
-    const { board: clearedBoard, linesCleared } = clearLines(mergedBoard);
-
-    setBoard(clearedBoard);
-    setLines((prev) => prev + linesCleared);
-
-    if (linesCleared > 0) {
-      const points = calculateScore(linesCleared, level);
-      setScore((prev) => prev + points);
-    }
-
-    // レベルアップ（10ライン毎）
-    const newLines = lines + linesCleared;
-    const newLevel = Math.floor(newLines / 10) + 1;
-    if (newLevel > level) {
-      setLevel(newLevel);
-    }
-
-    // 次のテトリミノ
-    const newTetromino = nextTetromino;
-    newTetromino.position = {
-      x: Math.floor(BOARD_WIDTH / 2) - Math.floor(newTetromino.shape[0].length / 2),
-      y: 0,
-    };
-
-    if (isGameOver(clearedBoard, newTetromino)) {
-      setGameOver(true);
-      if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
-      }
-      onGameOver?.(score);
-    } else {
-      setCurrentTetromino(newTetromino);
-      setNextTetromino(getRandomTetromino());
-    }
-  }, [currentTetromino, nextTetromino, board, lines, level, score, onGameOver]);
-
   // ゲームループ
   useEffect(() => {
-    if (!gameStarted || gameOver || isPaused || !currentTetromino) return;
-
-    const speed = Math.max(100, INITIAL_SPEED - (level - 1) * SPEED_INCREMENT);
-
-    gameLoopRef.current = setInterval(() => {
-      const moved = moveTetromino(0, 1);
-      if (!moved) {
-        lockTetromino();
+    if (gameOver || isPaused || !gameStarted) {
+      if (gameLoopRef.current) {
+        clearInterval(gameLoopRef.current);
+        gameLoopRef.current = null;
       }
+      return;
+    }
+
+    const speed = Math.max(100, 1000 - (level - 1) * 50);
+    gameLoopRef.current = setInterval(() => {
+      moveDown();
     }, speed);
 
     return () => {
@@ -199,257 +67,302 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         clearInterval(gameLoopRef.current);
       }
     };
-  }, [gameStarted, gameOver, isPaused, currentTetromino, level, moveTetromino, lockTetromino]);
+  }, [gameOver, isPaused, level, gameStarted, board, currentPiece, position]);
+
+  const moveDown = useCallback(() => {
+    const newPosition = { x: position.x, y: position.y + 1 };
+    if (!checkCollision(board, { ...currentPiece, position: newPosition }, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    } else {
+      lockPiece();
+    }
+  }, [board, currentPiece, position]);
+
+  const moveLeft = useCallback(() => {
+    const newPosition = { x: position.x - 1, y: position.y };
+    if (!checkCollision(board, { ...currentPiece, position: newPosition }, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    }
+  }, [board, currentPiece, position]);
+
+  const moveRight = useCallback(() => {
+    const newPosition = { x: position.x + 1, y: position.y };
+    if (!checkCollision(board, { ...currentPiece, position: newPosition }, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    }
+  }, [board, currentPiece, position]);
+
+  const rotate = useCallback(() => {
+    const rotated = rotateTetromino(currentPiece);
+    if (!checkCollision(board, { ...rotated, position }, { x: 0, y: 0 })) {
+      setCurrentPiece(rotated);
+    }
+  }, [board, currentPiece, position]);
+
+  const hardDrop = useCallback(() => {
+    let newPosition = { ...position };
+    while (!checkCollision(board, { ...currentPiece, position: { x: newPosition.x, y: newPosition.y + 1 } }, { x: 0, y: 0 })) {
+      newPosition.y++;
+    }
+    setPosition(newPosition);
+    setTimeout(() => lockPiece(), 50);
+  }, [board, currentPiece, position]);
+
+  const lockPiece = useCallback(() => {
+    const pieceToMerge = { ...currentPiece, position: position };
+    const newBoard = mergeTetromino(board, pieceToMerge);
+    const { board: clearedBoard, linesCleared } = clearLines(newBoard);
+    
+    setBoard(clearedBoard);
+    setLines(prev => prev + linesCleared);
+    const newScore = score + calculateScore(linesCleared, level);
+    setScore(newScore);
+
+    if (linesCleared > 0 && (lines + linesCleared) >= level * 10) {
+      setLevel(prev => prev + 1);
+    }
+
+    const newPiece = nextPiece;
+    const newNext = getRandomTetromino();
+    
+    if (checkCollision(clearedBoard, newPiece, { x: 0, y: 0 })) {
+      setGameOver(true);
+      onGameOver?.(newScore);
+      return;
+    }
+    
+    setCurrentPiece(newPiece);
+    setNextPiece(newNext);
+    setPosition({ x: 3, y: 0 });
+  }, [board, currentPiece, nextPiece, position, level, score, lines, onGameOver]);
 
   // キーボード操作
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (gameOver || !gameStarted) return;
+    if (!gameStarted || gameOver || isPaused) return;
 
+    const handleKeyPress = (e: KeyboardEvent) => {
+      e.preventDefault();
       switch (e.key) {
         case 'ArrowLeft':
-          e.preventDefault();
-          moveTetromino(-1, 0);
+          moveLeft();
           break;
         case 'ArrowRight':
-          e.preventDefault();
-          moveTetromino(1, 0);
+          moveRight();
           break;
         case 'ArrowDown':
-          e.preventDefault();
-          moveTetromino(0, 1);
+          moveDown();
           break;
         case 'ArrowUp':
-        case ' ':
-          e.preventDefault();
           rotate();
           break;
-        case 'Enter':
-          e.preventDefault();
+        case ' ':
           hardDrop();
-          break;
-        case 'p':
-        case 'P':
-          setIsPaused((prev) => !prev);
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameOver, gameStarted, moveTetromino, rotate, hardDrop]);
+  }, [gameStarted, gameOver, isPaused, moveLeft, moveRight, moveDown, rotate, hardDrop]);
 
-  // タッチ操作
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartRef.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-    };
+  const resetGame = () => {
+    setBoard(createBoard());
+    setCurrentPiece(getRandomTetromino());
+    setNextPiece(getRandomTetromino());
+    setPosition({ x: 3, y: 0 });
+    setScore(0);
+    setLevel(1);
+    setLines(0);
+    setGameOver(false);
+    setIsPaused(false);
+    setGameStarted(true);
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current) return;
-
-    const touchEnd = {
-      x: e.changedTouches[0].clientX,
-      y: e.changedTouches[0].clientY,
-    };
-
-    const dx = touchEnd.x - touchStartRef.current.x;
-    const dy = touchEnd.y - touchStartRef.current.y;
-
-    // スワイプ方向判定
-    if (Math.abs(dx) > Math.abs(dy)) {
-      // 横スワイプ
-      if (Math.abs(dx) > 30) {
-        moveTetromino(dx > 0 ? 1 : -1, 0);
-      }
-    } else {
-      // 縦スワイプ
-      if (dy > 50) {
-        hardDrop();
-      }
-    }
-
-    touchStartRef.current = null;
+  const togglePause = () => {
+    setIsPaused(prev => !prev);
   };
 
-  // ボードをレンダリング
   const renderBoard = () => {
-    const displayBoard = board.map((row) => [...row]);
-
-    // 現在のテトリミノを描画
-    if (currentTetromino) {
-      currentTetromino.shape.forEach((row, y) => {
+    const displayBoard = board.map(row => [...row]);
+    
+    if (!gameOver) {
+      currentPiece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
-          if (cell) {
-            const boardY = currentTetromino.position.y + y;
-            const boardX = currentTetromino.position.x + x;
-            if (
-              boardY >= 0 &&
-              boardY < BOARD_HEIGHT &&
-              boardX >= 0 &&
-              boardX < BOARD_WIDTH
-            ) {
-              displayBoard[boardY][boardX] = currentTetromino.color;
+          if (cell === 1) {
+            const boardY = position.y + y;
+            const boardX = position.x + x;
+            if (boardY >= 0 && boardY < BOARD_HEIGHT && boardX >= 0 && boardX < BOARD_WIDTH) {
+              displayBoard[boardY][boardX] = currentPiece.type;
             }
           }
         });
       });
     }
 
-    return displayBoard;
+    return displayBoard.map((row, y) => (
+      <div key={y} style={{ display: 'flex' }}>
+        {row.map((cell, x) => (
+          <div
+            key={`${y}-${x}`}
+            style={{
+              width: CELL_SIZE - 4,
+              height: CELL_SIZE - 4,
+              backgroundColor: cell ? getTetrominoColor(cell as string) : '#1a1a1a',
+              border: '2px solid #333',
+              borderRadius: '2px'
+            }}
+          />
+        ))}
+      </div>
+    ));
   };
 
-  const displayBoard = renderBoard();
+  const renderNextPiece = () => {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
+        <div style={{ display: 'inline-block' }}>
+          {nextPiece.shape.map((row, y) => (
+            <div key={y} style={{ display: 'flex' }}>
+              {row.map((cell, x) => (
+                <div
+                  key={`${y}-${x}`}
+                  style={{
+                    width: 15,
+                    height: 15,
+                    backgroundColor: cell === 1 ? getTetrominoColor(nextPiece.type) : 'transparent',
+                    border: cell === 1 ? '1px solid #444' : 'none',
+                    borderRadius: '1px'
+                  }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-900 to-indigo-900 py-8 px-4 overflow-auto">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-6 text-white text-center">
-          <h1 className="text-4xl font-bold mb-2">TETRIS</h1>
-          <p className="text-sm opacity-80">Farcaster Mini App</p>
+    <div className="flex flex-col items-center justify-center h-screen w-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800 overflow-hidden">
+      {/* タイトル */}
+      <div className="text-center mb-3">
+        <h1 className="text-2xl font-bold text-white drop-shadow-lg">TETRIS</h1>
+      </div>
+
+      {/* メインゲームエリア */}
+      <div className="flex items-center justify-center gap-3">
+        {/* ゲームボード */}
+        <div
+          className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-2 relative"
+          style={{
+            transform: 'scale(0.85)',
+            transformOrigin: 'center'
+          }}
+        >
+          {renderBoard()}
+          {gameOver && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-red-500 mb-4">GAME OVER</p>
+                <p className="text-xl text-white mb-4">Score: {score}</p>
+                <button
+                  onClick={resetGame}
+                  className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  RETRY
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6 items-center md:items-start justify-center">
-          {/* ゲームボード */}
-          <div className="flex-shrink-0">
-            <div
-              style={{
-                width: BOARD_WIDTH * CELL_SIZE,
-                height: BOARD_HEIGHT * CELL_SIZE,
-                outline: '4px solid rgb(168, 85, 247)',
-                outlineOffset: '0px',
-              }}
-              className="bg-gray-900 rounded-lg shadow-xl relative overflow-hidden"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
-              {displayBoard.map((row, y) => (
-                <div key={y} className="flex">
-                  {row.map((cell, x) => (
-                    <div
-                      key={`${y}-${x}`}
-                      className="border border-gray-800"
-                      style={{
-                        width: CELL_SIZE,
-                        height: CELL_SIZE,
-                        backgroundColor: cell || '#1a1a2e',
-                        boxShadow: cell ? 'inset 0 0 0 2px rgba(255,255,255,0.1)' : 'none',
-                      }}
-                    />
-                  ))}
-                </div>
-              ))}
+        {/* サイドパネル */}
+        <div className="flex flex-col gap-2" style={{ width: '100px' }}>
+          {/* スコア */}
+          <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-purple-400/20">
+            <p className="text-xs text-purple-300 mb-1">スコア</p>
+            <p className="text-lg font-bold text-white">{score}</p>
+          </div>
 
-              {/* ゲームオーバーオーバーレイ */}
-              {gameOver && (
-                <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center rounded-lg">
-                  <div className="text-center text-white">
-                    <h2 className="text-3xl font-bold mb-4">GAME OVER</h2>
-                    <p className="text-xl mb-2">スコア: {score}</p>
-                    <p className="text-lg mb-4">ライン: {lines}</p>
-                    {score >= NFT_THRESHOLD_SCORE && (
-                      <p className="text-yellow-400 mb-4">🎉 NFT報酬を獲得！</p>
-                    )}
-                    <button
-                      onClick={initGame}
-                      className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-bold transition-colors"
-                    >
-                      もう一度プレイ
-                    </button>
-                  </div>
-                </div>
-              )}
+          {/* レベル・ライン */}
+          <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-purple-400/20">
+            <p className="text-xs text-purple-300">レベル: <span className="text-white font-bold">{level}</span></p>
+            <p className="text-xs text-purple-300">ライン: <span className="text-white font-bold">{lines}</span></p>
+          </div>
 
-              {/* ポーズオーバーレイ */}
-              {isPaused && !gameOver && (
-                <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center rounded-lg">
-                  <div className="text-white text-2xl font-bold">PAUSED</div>
-                </div>
-              )}
+          {/* Next */}
+          <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-purple-400/20">
+            <p className="text-xs text-purple-300 mb-1">Next</p>
+            {renderNextPiece()}
+          </div>
+
+          {/* 操作説明 */}
+          <div className="bg-black/30 backdrop-blur-sm rounded-lg p-2 border border-purple-400/20">
+            <p className="text-xs text-purple-300 mb-1">操作</p>
+            <div className="text-xs text-white space-y-0.5">
+              <p>← → 移動</p>
+              <p>↑ 回転</p>
+              <p>↓ 落下</p>
+              <p>Space ハードドロップ</p>
             </div>
           </div>
 
-          {/* サイドパネル */}
-          <div className="flex flex-col gap-4 w-full md:w-auto md:min-w-[200px]">
-            {/* スコア表示 */}
-            <div className="bg-gray-800 text-white p-4 rounded-lg">
-              <div className="mb-3">
-                <div className="text-sm opacity-70">スコア</div>
-                <div className="text-2xl font-bold">{score}</div>
-              </div>
-              <div className="mb-3">
-                <div className="text-sm opacity-70">ライン</div>
-                <div className="text-xl font-bold">{lines}</div>
-              </div>
-              <div>
-                <div className="text-sm opacity-70">レベル</div>
-                <div className="text-xl font-bold">{level}</div>
-              </div>
-            </div>
-
-            {/* 次のテトリミノ */}
-            {nextTetromino && (
-              <div className="bg-gray-800 text-white p-4 rounded-lg">
-                <div className="text-sm opacity-70 mb-2">NEXT</div>
-                <div className="flex justify-center">
-                  <div className="bg-gray-900 p-2 rounded">
-                    {nextTetromino.shape.map((row, y) => (
-                      <div key={y} className="flex">
-                        {row.map((cell, x) => (
-                          <div
-                            key={`${y}-${x}`}
-                            style={{
-                              width: 20,
-                              height: 20,
-                              backgroundColor: cell ? nextTetromino.color : 'transparent',
-                              border: cell ? '1px solid rgba(255,255,255,0.2)' : 'none',
-                            }}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 操作説明 */}
-            <div className="bg-gray-800 text-white p-4 rounded-lg text-sm">
-              <div className="font-bold mb-2">操作方法</div>
-              <div className="space-y-1 opacity-70">
-                <div>← → : 移動</div>
-                <div>↑ / Space : 回転</div>
-                <div>↓ : 下移動</div>
-                <div>Enter : ハードドロップ</div>
-                <div>P : 一時停止</div>
-                <div className="mt-2 pt-2 border-t border-gray-700">
-                  <div>📱 スワイプで操作</div>
-                </div>
-              </div>
-            </div>
-
-            {/* スタート/ポーズボタン */}
+          {/* ボタン */}
+          <div className="space-y-1.5">
             {!gameStarted ? (
               <button
-                onClick={initGame}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold transition-colors"
+                onClick={resetGame}
+                className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors"
               >
-                ゲームスタート
+                START
               </button>
             ) : (
               <button
-                onClick={() => setIsPaused(!isPaused)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold transition-colors"
-                disabled={gameOver}
+                onClick={togglePause}
+                className="w-full py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-semibold transition-colors"
               >
-                {isPaused ? '再開' : '一時停止'}
+                {isPaused ? 'RESUME' : 'PAUSE'}
               </button>
             )}
           </div>
         </div>
       </div>
+
+      {/* タッチ操作ボタン (画面下部) */}
+      {gameStarted && !gameOver && (
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={rotate}
+            className="w-16 h-16 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-xl transition-colors"
+          >
+            ↻
+          </button>
+          <button
+            onClick={moveLeft}
+            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xl transition-colors"
+          >
+            ←
+          </button>
+          <button
+            onClick={moveDown}
+            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xl transition-colors"
+          >
+            ↓
+          </button>
+          <button
+            onClick={moveRight}
+            className="w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors text-xl"
+          >
+            →
+          </button>
+          <button
+            onClick={hardDrop}
+            className="w-16 h-16 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold transition-colors text-sm"
+          >
+            DROP
+          </button>
+        </div>
+      )}
     </div>
   );
 };
