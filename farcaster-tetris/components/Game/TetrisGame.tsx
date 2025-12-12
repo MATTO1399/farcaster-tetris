@@ -10,7 +10,8 @@ import {
   mergeTetromino,
   clearLines,
   calculateScore,
-  getTetrominoColor,
+  isGameOver,
+  getTetrominoColor
 } from '@/utils/tetrisLogic';
 import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
 import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
@@ -54,95 +55,21 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }],
 };
 
-const getSpawnX = (shape: number[][]) =>
-  Math.floor(BOARD_WIDTH / 2) - Math.floor(shape[0].length / 2);
-
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino>(getRandomTetromino());
   const [nextPiece, setNextPiece] = useState<Tetromino>(getRandomTetromino());
   const [position, setPosition] = useState<Position>({ x: 3, y: 0 });
-
-  // 画面表示用state（ただし回転計算の真実はref）
-  const [rotationState, setRotationState] = useState<RotationState>(0);
-
+  const [rotationState, setRotationState] = useState<RotationState>(0); // SRS回転状態
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
   const [lines, setLines] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-
-  const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ===== 連打安定化：最新値参照用 ref =====
-  const boardRef = useRef(board);
-  const currentPieceRef = useRef(currentPiece);
-  const nextPieceRef = useRef(nextPiece);
-  const positionRef = useRef(position);
-
-  const scoreRef = useRef(score);
-  const levelRef = useRef(level);
-  const linesRef = useRef(lines);
-
-  const gameOverRef = useRef(gameOver);
-  const isPausedRef = useRef(isPaused);
-  const gameStartedRef = useRef(gameStarted);
-
-  // 回転状態の真実
-  const rotationRef = useRef<RotationState>(0);
-
-  useEffect(() => { boardRef.current = board; }, [board]);
-  useEffect(() => { currentPieceRef.current = currentPiece; }, [currentPiece]);
-  useEffect(() => { nextPieceRef.current = nextPiece; }, [nextPiece]);
-  useEffect(() => { positionRef.current = position; }, [position]);
-
-  useEffect(() => { scoreRef.current = score; }, [score]);
-  useEffect(() => { levelRef.current = level; }, [level]);
-  useEffect(() => { linesRef.current = lines; }, [lines]);
-
-  useEffect(() => { gameOverRef.current = gameOver; }, [gameOver]);
-  useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
-  useEffect(() => { gameStartedRef.current = gameStarted; }, [gameStarted]);
-
-  // rotationState(state) と rotationRef(ref) の同期（表示上も使うなら）
-  useEffect(() => { rotationRef.current = rotationState; }, [rotationState]);
-
-  // ===== ref と state を同時更新するヘルパー =====
-  const setBoardSync = (b: Board) => {
-    boardRef.current = b;
-    setBoard(b);
-  };
-  const setCurrentPieceSync = (p: Tetromino) => {
-    currentPieceRef.current = p;
-    setCurrentPiece(p);
-  };
-  const setNextPieceSync = (p: Tetromino) => {
-    nextPieceRef.current = p;
-    setNextPiece(p);
-  };
-  const setPositionSync = (p: Position) => {
-    positionRef.current = p;
-    setPosition(p);
-  };
-  const setRotationSync = (r: RotationState) => {
-    rotationRef.current = r;
-    setRotationState(r);
-  };
-  const setScoreSync = (s: number) => {
-    scoreRef.current = s;
-    setScore(s);
-  };
-  const setLevelSync = (lv: number) => {
-    levelRef.current = lv;
-    setLevel(lv);
-  };
-  const setLinesSync = (l: number) => {
-    linesRef.current = l;
-    setLines(l);
-  };
-
-  // ===== コントロールボタンの高さを動的計測 =====
+  const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // コントロールボタンの高さを動的計測
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const [controlsHeight, setControlsHeight] = useState(0);
 
@@ -151,10 +78,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     boardScale: 0.72,
     sidePanelWidth: 85,
     buttonSize: 56,
-    gap: 5,
-    paddingX: 12,
+    gap: 5, // 固定5px
+    paddingX: 12
   });
 
+  // コントロールの高さを測定
   useLayoutEffect(() => {
     const el = controlsRef.current;
     if (!el) return;
@@ -168,41 +96,84 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     return () => ro.disconnect();
   }, []);
 
+  // 画面サイズに応じた自動調整
   useEffect(() => {
     const calculateLayout = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
       const aspectRatio = height / width;
-
+      
       let config: LayoutConfig;
-
+      
       if (width <= 375) {
         if (aspectRatio > 2.0) {
-          config = { boardScale: 0.68, sidePanelWidth: 80, buttonSize: 52, gap: 5, paddingX: 8 };
+          config = {
+            boardScale: 0.68,
+            sidePanelWidth: 80,
+            buttonSize: 52,
+            gap: 5,
+            paddingX: 8
+          };
         } else {
-          config = { boardScale: 0.65, sidePanelWidth: 80, buttonSize: 50, gap: 5, paddingX: 8 };
+          config = {
+            boardScale: 0.65,
+            sidePanelWidth: 80,
+            buttonSize: 50,
+            gap: 5,
+            paddingX: 8
+          };
         }
       } else if (width <= 390) {
-        config = { boardScale: 0.70, sidePanelWidth: 85, buttonSize: 54, gap: 5, paddingX: 10 };
+        config = {
+          boardScale: 0.70,
+          sidePanelWidth: 85,
+          buttonSize: 54,
+          gap: 5,
+          paddingX: 10
+        };
       } else if (width <= 414) {
-        config = { boardScale: 0.75, sidePanelWidth: 90, buttonSize: 56, gap: 5, paddingX: 12 };
+        config = {
+          boardScale: 0.75,
+          sidePanelWidth: 90,
+          buttonSize: 56,
+          gap: 5,
+          paddingX: 12
+        };
       } else if (width <= 768) {
         if (aspectRatio < 1.0) {
-          config = { boardScale: 0.60, sidePanelWidth: 95, buttonSize: 60, gap: 5, paddingX: 16 };
+          config = {
+            boardScale: 0.60,
+            sidePanelWidth: 95,
+            buttonSize: 60,
+            gap: 5,
+            paddingX: 16
+          };
         } else {
-          config = { boardScale: 0.85, sidePanelWidth: 100, buttonSize: 64, gap: 5, paddingX: 16 };
+          config = {
+            boardScale: 0.85,
+            sidePanelWidth: 100,
+            buttonSize: 64,
+            gap: 5,
+            paddingX: 16
+          };
         }
       } else {
-        config = { boardScale: 0.90, sidePanelWidth: 110, buttonSize: 68, gap: 5, paddingX: 20 };
+        config = {
+          boardScale: 0.90,
+          sidePanelWidth: 110,
+          buttonSize: 68,
+          gap: 5,
+          paddingX: 20
+        };
       }
-
+      
       setLayoutConfig(config);
     };
 
     calculateLayout();
     window.addEventListener('resize', calculateLayout);
     window.addEventListener('orientationchange', calculateLayout);
-
+    
     return () => {
       window.removeEventListener('resize', calculateLayout);
       window.removeEventListener('orientationchange', calculateLayout);
@@ -228,7 +199,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
-  // ===== ゲームループ =====
+  // ゲームループ
   useEffect(() => {
     if (gameOver || isPaused || !gameStarted) {
       if (gameLoopRef.current) {
@@ -239,201 +210,174 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
 
     let speed: number;
-    if (level === 1) speed = 500;
-    else speed = 500 / Math.pow(1.1, level - 1);
+    if (level === 1) {
+      speed = 500;
+    } else {
+      speed = 500 / Math.pow(1.1, level - 1);
+    }
     speed = Math.max(50, speed);
 
     gameLoopRef.current = setInterval(() => {
-      // refベースで最新位置から落とす（連打入力と競合しにくい）
-      const prev = positionRef.current;
-      setPositionSync({ x: prev.x, y: prev.y + 1 });
+      setPosition(prev => {
+        const newPos = { x: prev.x, y: prev.y + 1 };
+        return newPos;
+      });
     }, speed);
 
     return () => {
-      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+      if (gameLoopRef.current) {
+        clearInterval(gameLoopRef.current);
+      }
     };
   }, [gameOver, isPaused, level, gameStarted]);
-
-  // ===== ロック処理（refベースでズレにくく） =====
-  const lockPiece = useCallback(
-    (lockPosition: Position) => {
-      const b = boardRef.current;
-      const piece = currentPieceRef.current;
-
-      const pieceToMerge = { ...piece, position: lockPosition };
-      const newBoard = mergeTetromino(b, pieceToMerge);
-      const { board: clearedBoard, linesCleared } = clearLines(newBoard);
-
-      setBoardSync(clearedBoard);
-
-      const newLines = linesRef.current + linesCleared;
-      setLinesSync(newLines);
-
-      const newScore = scoreRef.current + calculateScore(linesCleared, levelRef.current);
-      setScoreSync(newScore);
-
-      // レベルアップ（まとめて上がる可能性に対応）
-      let newLevel = levelRef.current;
-      while (newLines >= newLevel * 10) newLevel++;
-      if (newLevel !== levelRef.current) setLevelSync(newLevel);
-
-      const newPiece = nextPieceRef.current;
-      const newNext = getRandomTetromino();
-
-      const spawnPos: Position = { x: getSpawnX(newPiece.shape), y: 0 };
-      const spawnTestPiece = { ...newPiece, position: spawnPos };
-
-      if (checkCollision(clearedBoard, spawnTestPiece, { x: 0, y: 0 })) {
-        setGameOver(true);
-        gameOverRef.current = true;
-        onGameOver?.(newScore);
-        return;
-      }
-
-      setCurrentPieceSync(newPiece);
-      setNextPieceSync(newNext);
-      setPositionSync(spawnPos);
-      setRotationSync(0);
-    },
-    [onGameOver]
-  );
 
   // 衝突チェックとロック
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
 
-    const b = boardRef.current;
-    const piece = currentPieceRef.current;
-    const pos = positionRef.current;
-
-    const pieceWithPosition = { ...piece, position: pos };
-    if (checkCollision(b, pieceWithPosition, { x: 0, y: 0 })) {
-      const prevPosition = { x: pos.x, y: pos.y - 1 };
+    const pieceWithPosition = { ...currentPiece, position };
+    if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      const prevPosition = { x: position.x, y: position.y - 1 };
       lockPiece(prevPosition);
     }
-  }, [position, board, currentPiece, gameStarted, gameOver, isPaused, lockPiece]);
+  }, [position, board, currentPiece, gameStarted, gameOver, isPaused]);
 
-  // ===== 移動 =====
-  const moveLeft = useCallback(() => {
-    if (isPausedRef.current) return;
+  const lockPiece = useCallback((lockPosition: Position) => {
+    const pieceToMerge = { ...currentPiece, position: lockPosition };
+    const newBoard = mergeTetromino(board, pieceToMerge);
+    const { board: clearedBoard, linesCleared } = clearLines(newBoard);
+    
+    setBoard(clearedBoard);
+    setLines(prev => prev + linesCleared);
+    const newScore = score + calculateScore(linesCleared, level);
+    setScore(newScore);
 
-    const b = boardRef.current;
-    const piece = currentPieceRef.current;
-    const pos = positionRef.current;
-
-    const newPosition = { x: pos.x - 1, y: pos.y };
-    const testPiece = { ...piece, position: newPosition };
-
-    if (!checkCollision(b, testPiece, { x: 0, y: 0 })) {
-      setPositionSync(newPosition);
+    if (linesCleared > 0 && (lines + linesCleared) >= level * 10) {
+      setLevel(prev => prev + 1);
     }
-  }, []);
+
+    const newPiece = nextPiece;
+    const newNext = getRandomTetromino();
+    
+    if (checkCollision(clearedBoard, newPiece, { x: 0, y: 0 })) {
+      setGameOver(true);
+      onGameOver?.(newScore);
+      return;
+    }
+    
+    setCurrentPiece(newPiece);
+    setNextPiece(newNext);
+    setPosition({ x: 3, y: 0 });
+    setRotationState(0); // リセット
+  }, [board, currentPiece, nextPiece, level, score, lines, onGameOver]);
+
+  const moveLeft = useCallback(() => {
+    if (isPaused) return;
+    const newPosition = { x: position.x - 1, y: position.y };
+    const pieceWithPosition = { ...currentPiece, position: newPosition };
+    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      setPosition(newPosition);
+    }
+  }, [board, currentPiece, position, isPaused]);
 
   const moveRight = useCallback(() => {
-    if (isPausedRef.current) return;
-
-    const b = boardRef.current;
-    const piece = currentPieceRef.current;
-    const pos = positionRef.current;
-
-    const newPosition = { x: pos.x + 1, y: pos.y };
-    const testPiece = { ...piece, position: newPosition };
-
-    if (!checkCollision(b, testPiece, { x: 0, y: 0 })) {
-      setPositionSync(newPosition);
+    if (isPaused) return;
+    const newPosition = { x: position.x + 1, y: position.y };
+    const pieceWithPosition = { ...currentPiece, position: newPosition };
+    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      setPosition(newPosition);
     }
-  }, []);
+  }, [board, currentPiece, position, isPaused]);
 
   const moveDown = useCallback(() => {
-    if (isPausedRef.current) return;
-
-    const b = boardRef.current;
-    const piece = currentPieceRef.current;
-    const pos = positionRef.current;
-
-    const newPosition = { x: pos.x, y: pos.y + 1 };
-    const testPiece = { ...piece, position: newPosition };
-
-    if (!checkCollision(b, testPiece, { x: 0, y: 0 })) {
-      setPositionSync(newPosition);
+    if (isPaused) return;
+    const newPosition = { x: position.x, y: position.y + 1 };
+    const pieceWithPosition = { ...currentPiece, position: newPosition };
+    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+      setPosition(newPosition);
     }
-  }, []);
+  }, [board, currentPiece, position, isPaused]);
 
-  // ===== 回転（SRS + 連打安定：rotationRef を真実に） =====
-  const attemptRotate = useCallback((dir: 1 | -1) => {
-    if (isPausedRef.current) return;
-    if (!gameStartedRef.current || gameOverRef.current) return;
+  // SRS回転 (時計回り)
+  const rotate = useCallback(() => {
+    if (isPaused) return;
+    
+    const isIPiece = currentPiece.type === 'I';
+    const kickTable = isIPiece ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
+    const newRotationState = ((rotationState + 1) % 4) as RotationState;
+    const transitionKey = `${rotationState}->${newRotationState}`;
+    const kicks = kickTable[transitionKey] || [{ x: 0, y: 0 }];
 
-    const b = boardRef.current;
-    const piece = currentPieceRef.current;
-    const pos = positionRef.current;
-
-    const from = rotationRef.current;
-    const to = (((from + (dir === 1 ? 1 : 3)) % 4) as RotationState);
-    const transitionKey = `${from}->${to}`;
-
-    const kickTable = piece.type === 'I' ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
-    const kicks = kickTable[transitionKey] ?? [{ x: 0, y: 0 }];
-
-    // 回転したshape
-    let rotated = piece;
-    if (dir === 1) {
-      rotated = rotateTetromino(piece);
-    } else {
-      rotated = rotateTetromino(rotateTetromino(rotateTetromino(piece)));
-    }
+    const rotated = rotateTetromino(currentPiece);
 
     for (const kick of kicks) {
-      const testPosition = { x: pos.x + kick.x, y: pos.y + kick.y };
+      const testPosition = {
+        x: position.x + kick.x,
+        y: position.y + kick.y
+      };
       const testPiece = { ...rotated, position: testPosition };
-
-      if (!checkCollision(b, testPiece, { x: 0, y: 0 })) {
-        setCurrentPieceSync(rotated);
-        setPositionSync(testPosition);
-        setRotationSync(to);
+      
+      if (!checkCollision(board, testPiece, { x: 0, y: 0 })) {
+        setCurrentPiece(rotated);
+        setPosition(testPosition);
+        setRotationState(newRotationState);
         return;
       }
     }
-  }, []);
+  }, [board, position, currentPiece, rotationState, isPaused]);
 
-  const rotate = useCallback(() => attemptRotate(1), [attemptRotate]);
-  const rotateCounterClockwise = useCallback(() => attemptRotate(-1), [attemptRotate]);
+  // SRS回転 (反時計回り)
+  const rotateCounterClockwise = useCallback(() => {
+    if (isPaused) return;
+    
+    const isIPiece = currentPiece.type === 'I';
+    const kickTable = isIPiece ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
+    const newRotationState = ((rotationState + 3) % 4) as RotationState;
+    const transitionKey = `${rotationState}->${newRotationState}`;
+    const kicks = kickTable[transitionKey] || [{ x: 0, y: 0 }];
 
-  const hardDrop = useCallback(() => {
-    if (isPausedRef.current) return;
-
-    const b = boardRef.current;
-    const piece = currentPieceRef.current;
-    let dropPosition = { ...positionRef.current };
-
-    while (true) {
-      const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
-      const testPiece = { ...piece, position: nextPos };
-      if (checkCollision(b, testPiece, { x: 0, y: 0 })) break;
-      dropPosition = nextPos;
+    // 反時計回りは3回時計回りと同じ
+    let rotated = currentPiece;
+    for (let i = 0; i < 3; i++) {
+      rotated = rotateTetromino(rotated);
     }
 
-    setPositionSync(dropPosition);
-  }, []);
+    for (const kick of kicks) {
+      const testPosition = {
+        x: position.x + kick.x,
+        y: position.y + kick.y
+      };
+      const testPiece = { ...rotated, position: testPosition };
+      
+      if (!checkCollision(board, testPiece, { x: 0, y: 0 })) {
+        setCurrentPiece(rotated);
+        setPosition(testPosition);
+        setRotationState(newRotationState);
+        return;
+      }
+    }
+  }, [board, position, currentPiece, rotationState, isPaused]);
+
+  const hardDrop = useCallback(() => {
+    if (isPaused) return;
+    let dropPosition = { ...position };
+    while (true) {
+      const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
+      const pieceWithPosition = { ...currentPiece, position: nextPos };
+      if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+        break;
+      }
+      dropPosition = nextPos;
+    }
+    setPosition(dropPosition);
+  }, [board, currentPiece, position, isPaused]);
 
   // キーボード操作
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
 
     const handleKeyPress = (e: KeyboardEvent) => {
-      // preventDefault が効くように
-      if (
-        e.key === 'ArrowLeft' ||
-        e.key === 'ArrowRight' ||
-        e.key === 'ArrowDown' ||
-        e.key === 'ArrowUp' ||
-        e.key === ' ' ||
-        e.key === 'z' ||
-        e.key === 'Z'
-      ) {
-        e.preventDefault();
-      }
-
+      e.preventDefault();
       switch (e.key) {
         case 'ArrowLeft':
           moveLeft();
@@ -457,46 +401,31 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       }
     };
 
-    window.addEventListener('keydown', handleKeyPress, { passive: false });
+    window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [gameStarted, gameOver, isPaused, moveLeft, moveRight, moveDown, rotate, rotateCounterClockwise, hardDrop]);
 
   const resetGame = () => {
-    const b = createBoard();
-    const p = getRandomTetromino();
-    const n = getRandomTetromino();
-    const spawnPos: Position = { x: getSpawnX(p.shape), y: 0 };
-
-    setBoardSync(b);
-    setCurrentPieceSync(p);
-    setNextPieceSync(n);
-    setPositionSync(spawnPos);
-    setRotationSync(0);
-
-    setScoreSync(0);
-    setLevelSync(1);
-    setLinesSync(0);
-
+    setBoard(createBoard());
+    setCurrentPiece(getRandomTetromino());
+    setNextPiece(getRandomTetromino());
+    setPosition({ x: 3, y: 0 });
+    setRotationState(0);
+    setScore(0);
+    setLevel(1);
+    setLines(0);
     setGameOver(false);
-    gameOverRef.current = false;
-
     setIsPaused(false);
-    isPausedRef.current = false;
-
     setGameStarted(true);
-    gameStartedRef.current = true;
   };
 
   const togglePause = () => {
-    setIsPaused(prev => {
-      isPausedRef.current = !prev;
-      return !prev;
-    });
+    setIsPaused(prev => !prev);
   };
 
   const renderBoard = () => {
     const displayBoard = board.map(row => [...row]);
-
+    
     if (!gameOver) {
       currentPiece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
@@ -521,7 +450,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
               height: scaledInner,
               backgroundColor: cell ? getTetrominoColor(cell as string) : '#1a1a1a',
               border: `${scaledBorder}px solid #333`,
-              borderRadius: '2px',
+              borderRadius: '2px'
             }}
           />
         ))}
@@ -543,7 +472,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                     height: 15,
                     backgroundColor: cell === 1 ? getTetrominoColor(nextPiece.type) : 'transparent',
                     border: cell === 1 ? '1px solid #444' : 'none',
-                    borderRadius: '1px',
+                    borderRadius: '1px'
                   }}
                 />
               ))}
@@ -561,7 +490,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         paddingTop: 'env(safe-area-inset-top)',
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        WebkitTouchCallout: 'none',
+        WebkitTouchCallout: 'none'
       }}
     >
       {/* メインコンテンツエリア（タイトル＋ゲームボード） - 縦中央揃え */}
@@ -573,7 +502,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       >
         {/* タイトル */}
         <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">
+          <h1 
+            className="text-2xl font-bold text-white drop-shadow-lg tracking-wider"
+            style={{
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
+            }}
+          >
             FARTETRIS
           </h1>
         </div>
@@ -598,6 +534,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                   <button
                     onClick={resetGame}
                     className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
+                    style={{
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      WebkitTouchCallout: 'none'
+                    }}
                   >
                     RETRY
                   </button>
@@ -607,12 +548,17 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           </div>
 
           {/* サイドパネル */}
-          <div className="flex flex-col gap-1.5" style={{ width: `${layoutConfig.sidePanelWidth}px` }}>
+          <div 
+            className="flex flex-col gap-1.5" 
+            style={{ width: `${layoutConfig.sidePanelWidth}px` }}
+          >
+            {/* スコア */}
             <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
               <p className="text-xs text-purple-300 mb-0.5">スコア</p>
               <p className="text-base font-bold text-white">{score}</p>
             </div>
 
+            {/* レベル・ライン */}
             <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
               <p className="text-xs text-purple-300">レベル</p>
               <p className="text-sm font-bold text-white mb-1">{level}</p>
@@ -620,16 +566,23 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
               <p className="text-sm font-bold text-white">{lines}</p>
             </div>
 
+            {/* Next */}
             <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20">
               <p className="text-xs text-purple-300 mb-1 text-center">Next</p>
               {renderNextPiece()}
             </div>
 
+            {/* ボタン */}
             <div className="space-y-1">
               {!gameStarted ? (
                 <button
                   onClick={resetGame}
                   className="w-full py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  style={{
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    WebkitTouchCallout: 'none'
+                  }}
                 >
                   START
                 </button>
@@ -637,6 +590,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                 <button
                   onClick={togglePause}
                   className="w-full py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  style={{
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    WebkitTouchCallout: 'none'
+                  }}
                 >
                   {isPaused ? 'RESUME' : 'PAUSE'}
                 </button>
@@ -658,15 +616,22 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           WebkitTouchCallout: 'none',
         }}
       >
-        <div className="flex justify-center" style={{ gap: `${layoutConfig.gap}px` }}>
+        {/* 上段: 回転×2 + DROP */}
+        <div 
+          className="flex justify-center"
+          style={{ gap: `${layoutConfig.gap}px` }}
+        >
           <button
             onClick={rotateCounterClockwise}
             disabled={!gameStarted || gameOver || isPaused}
             className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
+            style={{ 
+              width: `${layoutConfig.buttonSize}px`, 
               height: `${layoutConfig.buttonSize}px`,
               fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}
           >
             ↺
@@ -675,10 +640,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             onClick={rotate}
             disabled={!gameStarted || gameOver || isPaused}
             className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
+            style={{ 
+              width: `${layoutConfig.buttonSize}px`, 
               height: `${layoutConfig.buttonSize}px`,
               fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}
           >
             ↻
@@ -687,25 +655,35 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             onClick={hardDrop}
             disabled={!gameStarted || gameOver || isPaused}
             className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
+            style={{ 
+              width: `${layoutConfig.buttonSize}px`, 
               height: `${layoutConfig.buttonSize}px`,
               fontSize: `${layoutConfig.buttonSize * 0.28}px`,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}
           >
             DROP
           </button>
         </div>
 
-        <div className="flex justify-center" style={{ gap: `${layoutConfig.gap}px` }}>
+        {/* 下段: 矢印×3 */}
+        <div 
+          className="flex justify-center"
+          style={{ gap: `${layoutConfig.gap}px` }}
+        >
           <button
             onClick={moveLeft}
             disabled={!gameStarted || gameOver || isPaused}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
+            style={{ 
+              width: `${layoutConfig.buttonSize}px`, 
               height: `${layoutConfig.buttonSize}px`,
               fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}
           >
             ←
@@ -714,10 +692,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             onClick={moveDown}
             disabled={!gameStarted || gameOver || isPaused}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
+            style={{ 
+              width: `${layoutConfig.buttonSize}px`, 
               height: `${layoutConfig.buttonSize}px`,
               fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}
           >
             ↓
@@ -726,10 +707,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             onClick={moveRight}
             disabled={!gameStarted || gameOver || isPaused}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
+            style={{ 
+              width: `${layoutConfig.buttonSize}px`, 
               height: `${layoutConfig.buttonSize}px`,
               fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none'
             }}
           >
             →
