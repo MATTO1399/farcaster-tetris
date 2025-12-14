@@ -40,8 +40,8 @@ const SRS_KICK_TABLE: Record<string, Position[]> = {
   '2->1': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: -2 }, { x: -1, y: -2 }],
   '2->3': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }],
   '3->2': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }],
-  '3->0': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }],
-  '0->3': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }],
+  '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }],
+  '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }]
 };
 
 // SRSキックテーブル (I用)
@@ -53,28 +53,11 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   '2->3': [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 1 }, { x: -1, y: -2 }],
   '3->2': [{ x: 0, y: 0 }, { x: -2, y: 0 }, { x: 1, y: 0 }, { x: -2, y: -1 }, { x: 1, y: 2 }],
   '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: -2, y: 0 }, { x: 1, y: -2 }, { x: -2, y: 1 }],
-  '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }],
-};
-
-// おじゃまブロックで埋め尽くされたボードを作成
-const createOjamaFilledBoard = (): Board => {
-  const board = createBoard();
-  // 2×2のおじゃまブロックで埋め尽くす
-  for (let y = 0; y < BOARD_HEIGHT; y += 2) {
-    for (let x = 0; x < BOARD_WIDTH; x += 2) {
-      if (y < BOARD_HEIGHT && x < BOARD_WIDTH) {
-        board[y][x] = 'OJAMA';
-        if (x + 1 < BOARD_WIDTH) board[y][x + 1] = 'OJAMA';
-        if (y + 1 < BOARD_HEIGHT) board[y + 1][x] = 'OJAMA';
-        if (y + 1 < BOARD_HEIGHT && x + 1 < BOARD_WIDTH) board[y + 1][x + 1] = 'OJAMA';
-      }
-    }
-  }
-  return board;
+  '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }]
 };
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  const [board, setBoard] = useState<Board>(() => createOjamaFilledBoard());
+  const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
   const [nextPiece, setNextPiece] = useState<Tetromino | null>(null);
   const [position, setPosition] = useState<Position>({ x: 3, y: 0 });
@@ -492,56 +475,84 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       }
     }
 
-    return displayBoard.map((row, y) => (
-      <div key={y} style={{ display: 'flex' }}>
-        {row.map((cell, x) => {
-          const isOjama = cell === 'OJAMA';
-          const isOjamaTopLeft = ojamaBlocks.has(`${y},${x}`);
-          const isPartOfOjama2x2 = 
-            ojamaBlocks.has(`${y},${x}`) ||
-            ojamaBlocks.has(`${y},${x - 1}`) ||
-            ojamaBlocks.has(`${y - 1},${x}`) ||
-            ojamaBlocks.has(`${y - 1},${x - 1}`);
-          
-          return (
-            <div
-              key={`${y}-${x}`}
-              style={{
-                width: scaledInner,
-                height: scaledInner,
-                backgroundColor: cell ? (isPartOfOjama2x2 ? 'transparent' : getTetrominoColor(cell as string)) : '#1a1a1a',
-                border: `${scaledBorder}px solid #333`,
-                borderRadius: '2px',
-                position: 'relative',
-                overflow: 'visible'
-              }}
-            >
-              {isOjamaTopLeft && (
+    return (
+      <div style={{ position: 'relative' }}>
+        {displayBoard.map((row, y) => (
+          <div key={y} style={{ display: 'flex' }}>
+            {row.map((cell, x) => {
+              const isOjama = cell === 'OJAMA';
+              const isOjamaTopLeft = ojamaBlocks.has(`${y},${x}`);
+              const isPartOfOjama2x2 = 
+                ojamaBlocks.has(`${y},${x}`) ||
+                ojamaBlocks.has(`${y},${x - 1}`) ||
+                ojamaBlocks.has(`${y - 1},${x}`) ||
+                ojamaBlocks.has(`${y - 1},${x - 1}`);
+              
+              return (
                 <div
+                  key={`${y}-${x}`}
                   style={{
-                    position: 'absolute',
-                    top: `-${scaledBorder}px`,
-                    left: `-${scaledBorder}px`,
-                    width: `${scaledInner * 2 + scaledBorder * 2}px`,
-                    height: `${scaledInner * 2 + scaledBorder * 2}px`,
-                    pointerEvents: 'none',
-                    zIndex: 10
+                    width: scaledInner,
+                    height: scaledInner,
+                    backgroundColor: cell ? (isPartOfOjama2x2 ? 'transparent' : getTetrominoColor(cell as string)) : '#1a1a1a',
+                    border: `${scaledBorder}px solid #333`,
+                    borderRadius: '2px',
+                    position: 'relative',
+                    overflow: 'visible'
                   }}
                 >
-                  <Image
-                    src="/ojama-block.png"
-                    alt="Ojama Block"
-                    fill
-                    style={{ objectFit: 'cover' }}
-                    unoptimized
-                  />
+                  {isOjamaTopLeft && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: `-${scaledBorder}px`,
+                        left: `-${scaledBorder}px`,
+                        width: `${scaledInner * 2 + scaledBorder * 2}px`,
+                        height: `${scaledInner * 2 + scaledBorder * 2}px`,
+                        pointerEvents: 'none',
+                        zIndex: 10
+                      }}
+                    >
+                      <Image
+                        src="/ojama-block.png"
+                        alt="Ojama Block"
+                        fill
+                        style={{ objectFit: 'cover' }}
+                        unoptimized
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
+        
+        {/* 初期画面: ボード中央に大きなojama-block.pngを表示 */}
+        {!gameStarted && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: `${scaledInner * 6}px`,
+              height: `${scaledInner * 6}px`,
+              zIndex: 20,
+              pointerEvents: 'none'
+            }}
+          >
+            <Image
+              src="/ojama-block.png"
+              alt="Ojama Block"
+              fill
+              style={{ objectFit: 'contain' }}
+              unoptimized
+            />
+          </div>
+        )}
       </div>
-    ));
+    );
   };
 
   const renderNextPiece = () => {
@@ -634,7 +645,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
             {renderBoard()}
             {gameOver && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg z-30">
                 <div className="text-center">
                   <p className="text-3xl font-bold text-red-500 mb-4">GAME OVER</p>
                   <p className="text-xl text-white mb-4">Score: {score}</p>

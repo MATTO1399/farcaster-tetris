@@ -9,7 +9,7 @@ export async function GET() {
     },
     frame: {
       version: "1",
-      name: "Tetris",
+      name: "FARTETRIS",
       iconUrl: "https://farcaster-tetris.vercel.app/icon.png",
       splashImageUrl: "https://farcaster-tetris.vercel.app/splash.png",
       splashBackgroundColor: "#1e1b4b",
