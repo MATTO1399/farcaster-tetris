@@ -15,6 +15,7 @@ export const metadata: Metadata = {
     'fc:frame:button:1': 'Play FARTETRIS',
     'fc:frame:button:1:action': 'link',
     'fc:frame:button:1:target': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    'base:app_id': '693e193fd19763ca26ddc2a4',  // ← この行を追加
   },
 };
 
