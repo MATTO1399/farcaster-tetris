@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import sdk from '@farcaster/frame-sdk';
+import Image from 'next/image';
 import {
   createBoard,
   getRandomTetromino,
@@ -55,12 +56,29 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }],
 };
 
+// おじゃまブロックで埋め尽くされたボードを作成
+const createOjamaFilledBoard = (): Board => {
+  const board = createBoard();
+  // 2×2のおじゃまブロックで埋め尽くす
+  for (let y = 0; y < BOARD_HEIGHT; y += 2) {
+    for (let x = 0; x < BOARD_WIDTH; x += 2) {
+      if (y < BOARD_HEIGHT && x < BOARD_WIDTH) {
+        board[y][x] = 'OJAMA';
+        if (x + 1 < BOARD_WIDTH) board[y][x + 1] = 'OJAMA';
+        if (y + 1 < BOARD_HEIGHT) board[y + 1][x] = 'OJAMA';
+        if (y + 1 < BOARD_HEIGHT && x + 1 < BOARD_WIDTH) board[y + 1][x + 1] = 'OJAMA';
+      }
+    }
+  }
+  return board;
+};
+
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  const [board, setBoard] = useState<Board>(() => createBoard());
-  const [currentPiece, setCurrentPiece] = useState<Tetromino>(getRandomTetromino());
-  const [nextPiece, setNextPiece] = useState<Tetromino>(getRandomTetromino());
+  const [board, setBoard] = useState<Board>(() => createOjamaFilledBoard());
+  const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
+  const [nextPiece, setNextPiece] = useState<Tetromino | null>(null);
   const [position, setPosition] = useState<Position>({ x: 3, y: 0 });
-  const [rotationState, setRotationState] = useState<RotationState>(0); // SRS回転状態
+  const [rotationState, setRotationState] = useState<RotationState>(0);
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
   const [lines, setLines] = useState(0);
@@ -69,20 +87,17 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   
-  // コントロールボタンの高さを動的計測
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const [controlsHeight, setControlsHeight] = useState(0);
 
-  // レイアウト自動調整
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
     sidePanelWidth: 85,
     buttonSize: 56,
-    gap: 5, // 固定5px
+    gap: 5,
     paddingX: 12
   });
 
-  // コントロールの高さを測定
   useLayoutEffect(() => {
     const el = controlsRef.current;
     if (!el) return;
@@ -96,7 +111,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     return () => ro.disconnect();
   }, []);
 
-  // 画面サイズに応じた自動調整
   useEffect(() => {
     const calculateLayout = () => {
       const width = window.innerWidth;
@@ -180,12 +194,10 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
   }, []);
 
-  // スケール後のセルサイズを計算
   const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
-  // Farcaster SDK初期化
   useEffect(() => {
     const initFarcaster = async () => {
       try {
@@ -199,9 +211,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
-  // ゲームループ
   useEffect(() => {
-    if (gameOver || isPaused || !gameStarted) {
+    if (gameOver || isPaused || !gameStarted || !currentPiece) {
       if (gameLoopRef.current) {
         clearInterval(gameLoopRef.current);
         gameLoopRef.current = null;
@@ -229,11 +240,10 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         clearInterval(gameLoopRef.current);
       }
     };
-  }, [gameOver, isPaused, level, gameStarted]);
+  }, [gameOver, isPaused, level, gameStarted, currentPiece]);
 
-  // 衝突チェックとロック
   useEffect(() => {
-    if (!gameStarted || gameOver || isPaused) return;
+    if (!gameStarted || gameOver || isPaused || !currentPiece) return;
 
     const pieceWithPosition = { ...currentPiece, position };
     if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
@@ -243,23 +253,52 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [position, board, currentPiece, gameStarted, gameOver, isPaused]);
 
   const lockPiece = useCallback((lockPosition: Position) => {
-    const pieceToMerge = { ...currentPiece, position: lockPosition };
-    const newBoard = mergeTetromino(board, pieceToMerge);
-    const { board: clearedBoard, linesCleared } = clearLines(newBoard);
-    
-    setBoard(clearedBoard);
-    setLines(prev => prev + linesCleared);
-    const newScore = score + calculateScore(linesCleared, level);
-    setScore(newScore);
+    if (!currentPiece || !nextPiece) return;
 
-    if (linesCleared > 0 && (lines + linesCleared) >= level * 10) {
-      setLevel(prev => prev + 1);
+    const pieceToMerge = { ...currentPiece, position: lockPosition };
+    let newBoard = mergeTetromino(board, pieceToMerge);
+    let newScore = score;
+    
+    // おじゃまブロックが着地した場合、すべてのブロックを消してスコアに換算
+    if (currentPiece.isOjama) {
+      let blockCount = 0;
+      for (let y = 0; y < BOARD_HEIGHT; y++) {
+        for (let x = 0; x < BOARD_WIDTH; x++) {
+          if (newBoard[y][x] !== null) {
+            blockCount++;
+          }
+        }
+      }
+      
+      // すべてのブロックを消去
+      newBoard = createBoard();
+      
+      // ブロック数×10点をスコアに加算
+      const bonusScore = blockCount * 10;
+      newScore = score + bonusScore;
+      setScore(newScore);
+    } else {
+      // 通常のライン消去処理
+      const { board: clearedBoard, linesCleared } = clearLines(newBoard);
+      newBoard = clearedBoard;
+      
+      setLines(prev => prev + linesCleared);
+      newScore = score + calculateScore(linesCleared, level);
+      setScore(newScore);
     }
+    
+    // スコアベースでレベルアップ（1000点ごと）
+    const newLevel = Math.floor(newScore / 1000) + 1;
+    if (newLevel > level) {
+      setLevel(newLevel);
+    }
+    
+    setBoard(newBoard);
 
     const newPiece = nextPiece;
     const newNext = getRandomTetromino();
     
-    if (checkCollision(clearedBoard, newPiece, { x: 0, y: 0 })) {
+    if (checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
       setGameOver(true);
       onGameOver?.(newScore);
       return;
@@ -268,11 +307,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setCurrentPiece(newPiece);
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
-    setRotationState(0); // リセット
+    setRotationState(0);
   }, [board, currentPiece, nextPiece, level, score, lines, onGameOver]);
 
   const moveLeft = useCallback(() => {
-    if (isPaused) return;
+    if (isPaused || !currentPiece) return;
     const newPosition = { x: position.x - 1, y: position.y };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
     if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
@@ -281,7 +320,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [board, currentPiece, position, isPaused]);
 
   const moveRight = useCallback(() => {
-    if (isPaused) return;
+    if (isPaused || !currentPiece) return;
     const newPosition = { x: position.x + 1, y: position.y };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
     if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
@@ -290,7 +329,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [board, currentPiece, position, isPaused]);
 
   const moveDown = useCallback(() => {
-    if (isPaused) return;
+    if (isPaused || !currentPiece) return;
     const newPosition = { x: position.x, y: position.y + 1 };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
     if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
@@ -298,9 +337,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
   }, [board, currentPiece, position, isPaused]);
 
-  // SRS回転 (時計回り)
   const rotate = useCallback(() => {
-    if (isPaused) return;
+    if (isPaused || !currentPiece || currentPiece.isOjama) return;
     
     const isIPiece = currentPiece.type === 'I';
     const kickTable = isIPiece ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
@@ -326,9 +364,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
   }, [board, position, currentPiece, rotationState, isPaused]);
 
-  // SRS回転 (反時計回り)
   const rotateCounterClockwise = useCallback(() => {
-    if (isPaused) return;
+    if (isPaused || !currentPiece || currentPiece.isOjama) return;
     
     const isIPiece = currentPiece.type === 'I';
     const kickTable = isIPiece ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
@@ -336,7 +373,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     const transitionKey = `${rotationState}->${newRotationState}`;
     const kicks = kickTable[transitionKey] || [{ x: 0, y: 0 }];
 
-    // 反時計回りは3回時計回りと同じ
     let rotated = currentPiece;
     for (let i = 0; i < 3; i++) {
       rotated = rotateTetromino(rotated);
@@ -359,7 +395,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [board, position, currentPiece, rotationState, isPaused]);
 
   const hardDrop = useCallback(() => {
-    if (isPaused) return;
+    if (isPaused || !currentPiece) return;
     let dropPosition = { ...position };
     while (true) {
       const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
@@ -372,7 +408,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setPosition(dropPosition);
   }, [board, currentPiece, position, isPaused]);
 
-  // キーボード操作
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
 
@@ -407,8 +442,10 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const resetGame = () => {
     setBoard(createBoard());
-    setCurrentPiece(getRandomTetromino());
-    setNextPiece(getRandomTetromino());
+    const firstPiece = getRandomTetromino();
+    const secondPiece = getRandomTetromino();
+    setCurrentPiece(firstPiece);
+    setNextPiece(secondPiece);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
     setScore(0);
@@ -426,42 +463,95 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const renderBoard = () => {
     const displayBoard = board.map(row => [...row]);
     
-    if (!gameOver) {
+    if (!gameOver && currentPiece) {
       currentPiece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
           if (cell === 1) {
             const boardY = position.y + y;
             const boardX = position.x + x;
             if (boardY >= 0 && boardY < BOARD_HEIGHT && boardX >= 0 && boardX < BOARD_WIDTH) {
-              displayBoard[boardY][boardX] = currentPiece.type;
+              displayBoard[boardY][boardX] = currentPiece.isOjama ? 'OJAMA' : currentPiece.type;
             }
           }
         });
       });
     }
 
+    // おじゃまブロックの2×2の左上位置を検出
+    const ojamaBlocks = new Set<string>();
+    for (let y = 0; y < BOARD_HEIGHT - 1; y++) {
+      for (let x = 0; x < BOARD_WIDTH - 1; x++) {
+        if (
+          displayBoard[y][x] === 'OJAMA' &&
+          displayBoard[y][x + 1] === 'OJAMA' &&
+          displayBoard[y + 1][x] === 'OJAMA' &&
+          displayBoard[y + 1][x + 1] === 'OJAMA'
+        ) {
+          ojamaBlocks.add(`${y},${x}`);
+        }
+      }
+    }
+
     return displayBoard.map((row, y) => (
       <div key={y} style={{ display: 'flex' }}>
-        {row.map((cell, x) => (
-          <div
-            key={`${y}-${x}`}
-            style={{
-              width: scaledInner,
-              height: scaledInner,
-              backgroundColor: cell ? getTetrominoColor(cell as string) : '#1a1a1a',
-              border: `${scaledBorder}px solid #333`,
-              borderRadius: '2px'
-            }}
-          />
-        ))}
+        {row.map((cell, x) => {
+          const isOjama = cell === 'OJAMA';
+          const isOjamaTopLeft = ojamaBlocks.has(`${y},${x}`);
+          const isPartOfOjama2x2 = 
+            ojamaBlocks.has(`${y},${x}`) ||
+            ojamaBlocks.has(`${y},${x - 1}`) ||
+            ojamaBlocks.has(`${y - 1},${x}`) ||
+            ojamaBlocks.has(`${y - 1},${x - 1}`);
+          
+          return (
+            <div
+              key={`${y}-${x}`}
+              style={{
+                width: scaledInner,
+                height: scaledInner,
+                backgroundColor: cell ? (isPartOfOjama2x2 ? 'transparent' : getTetrominoColor(cell as string)) : '#1a1a1a',
+                border: `${scaledBorder}px solid #333`,
+                borderRadius: '2px',
+                position: 'relative',
+                overflow: 'visible'
+              }}
+            >
+              {isOjamaTopLeft && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: `-${scaledBorder}px`,
+                    left: `-${scaledBorder}px`,
+                    width: `${scaledInner * 2 + scaledBorder * 2}px`,
+                    height: `${scaledInner * 2 + scaledBorder * 2}px`,
+                    pointerEvents: 'none',
+                    zIndex: 10
+                  }}
+                >
+                  <Image
+                    src="/ojama-block.png"
+                    alt="Ojama Block"
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    unoptimized
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     ));
   };
 
   const renderNextPiece = () => {
+    if (!nextPiece) return null;
+    
+    const isOjamaNext = nextPiece.isOjama;
+    
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
-        <div style={{ display: 'inline-block' }}>
+        <div style={{ display: 'inline-block', position: 'relative' }}>
           {nextPiece.shape.map((row, y) => (
             <div key={y} style={{ display: 'flex' }}>
               {row.map((cell, x) => (
@@ -470,14 +560,35 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                   style={{
                     width: 15,
                     height: 15,
-                    backgroundColor: cell === 1 ? getTetrominoColor(nextPiece.type) : 'transparent',
+                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
                     border: cell === 1 ? '1px solid #444' : 'none',
-                    borderRadius: '1px'
+                    borderRadius: '1px',
+                    position: 'relative'
                   }}
                 />
               ))}
             </div>
           ))}
+          {isOjamaNext && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '-1px',
+                left: '-1px',
+                width: '32px',
+                height: '32px',
+                pointerEvents: 'none'
+              }}
+            >
+              <Image
+                src="/ojama-block.png"
+                alt="Ojama Block"
+                fill
+                style={{ objectFit: 'cover' }}
+                unoptimized
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -493,14 +604,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         WebkitTouchCallout: 'none'
       }}
     >
-      {/* メインコンテンツエリア（タイトル＋ゲームボード） - 縦中央揃え */}
       <div
         className="flex-1 w-full flex flex-col items-center justify-center"
         style={{
           paddingBottom: `calc(${controlsHeight}px + env(safe-area-inset-bottom))`,
         }}
       >
-        {/* タイトル */}
         <div className="text-center mb-4">
           <h1 
             className="text-2xl font-bold text-white drop-shadow-lg tracking-wider"
@@ -514,7 +623,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           </h1>
         </div>
 
-        {/* ゲームエリア */}
         <div
           className="flex items-center justify-center w-full max-w-md"
           style={{
@@ -523,7 +631,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             paddingRight: `${layoutConfig.paddingX}px`,
           }}
         >
-          {/* ゲームボード */}
           <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
             {renderBoard()}
             {gameOver && (
@@ -547,18 +654,15 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             )}
           </div>
 
-          {/* サイドパネル */}
           <div 
             className="flex flex-col gap-1.5" 
             style={{ width: `${layoutConfig.sidePanelWidth}px` }}
           >
-            {/* スコア */}
             <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
               <p className="text-xs text-purple-300 mb-0.5">スコア</p>
               <p className="text-base font-bold text-white">{score}</p>
             </div>
 
-            {/* レベル・ライン */}
             <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
               <p className="text-xs text-purple-300">レベル</p>
               <p className="text-sm font-bold text-white mb-1">{level}</p>
@@ -566,13 +670,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
               <p className="text-sm font-bold text-white">{lines}</p>
             </div>
 
-            {/* Next */}
             <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20">
               <p className="text-xs text-purple-300 mb-1 text-center">Next</p>
               {renderNextPiece()}
             </div>
 
-            {/* ボタン */}
             <div className="space-y-1">
               {!gameStarted ? (
                 <button
@@ -596,7 +698,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                     WebkitTouchCallout: 'none'
                   }}
                 >
-                  {isPaused ? 'RESUME' : 'PAUSE'}
+                  {isPaused ? 'RESTART' : 'PAUSE'}
                 </button>
               )}
             </div>
@@ -604,7 +706,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
       </div>
 
-      {/* タッチ操作ボタン - 2段組み */}
       <div
         ref={controlsRef}
         className="fixed bottom-0 left-0 right-0 flex flex-col items-center bg-gradient-to-t from-purple-900/95 to-transparent backdrop-blur-sm py-2"
@@ -616,7 +717,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           WebkitTouchCallout: 'none',
         }}
       >
-        {/* 上段: 回転×2 + DROP */}
         <div 
           className="flex justify-center"
           style={{ gap: `${layoutConfig.gap}px` }}
@@ -668,7 +768,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           </button>
         </div>
 
-        {/* 下段: 矢印×3 */}
         <div 
           className="flex justify-center"
           style={{ gap: `${layoutConfig.gap}px` }}

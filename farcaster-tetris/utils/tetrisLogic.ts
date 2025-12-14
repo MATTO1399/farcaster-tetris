@@ -13,6 +13,7 @@ export interface Tetromino {
   shape: number[][];
   color: string;
   position: Position;
+  isOjama?: boolean; // おじゃまブロック判定
 }
 
 // 空のボードを作成
@@ -22,9 +23,27 @@ export const createBoard = (): Board => {
     .map(() => Array(BOARD_WIDTH).fill(null));
 };
 
-// ランダムなテトリミノを生成
+// ランダムなテトリミノを生成（5%の確率でおじゃまブロック）
 export const getRandomTetromino = (): Tetromino => {
-  const types = Object.keys(TETROMINOS) as TetrominoType[];
+  const random = Math.random();
+  
+  // 5%の確率でおじゃまブロック
+  if (random < 0.05) {
+    const { shape, color } = TETROMINOS.OJAMA;
+    return {
+      type: 'OJAMA',
+      shape: shape.map((row) => [...row]),
+      color,
+      position: {
+        x: Math.floor(BOARD_WIDTH / 2) - 1,
+        y: 0,
+      },
+      isOjama: true,
+    };
+  }
+  
+  // 通常のテトリミノ
+  const types = Object.keys(TETROMINOS).filter(t => t !== 'OJAMA') as TetrominoType[];
   const type = types[Math.floor(Math.random() * types.length)];
   const { shape, color } = TETROMINOS[type];
 
@@ -36,11 +55,16 @@ export const getRandomTetromino = (): Tetromino => {
       x: Math.floor(BOARD_WIDTH / 2) - Math.floor(shape[0].length / 2),
       y: 0,
     },
+    isOjama: false,
   };
 };
 
-// テトリミノを回転
+// テトリミノを回転（おじゃまブロックは回転不可）
 export const rotateTetromino = (tetromino: Tetromino): Tetromino => {
+  if (tetromino.isOjama) {
+    return tetromino; // おじゃまブロックは回転しない
+  }
+  
   const n = tetromino.shape.length;
   const rotated = Array(n)
     .fill(null)
@@ -70,7 +94,6 @@ export const checkCollision = (
         const newX = tetromino.position.x + x + offset.x;
         const newY = tetromino.position.y + y + offset.y;
 
-        // 範囲外チェック
         if (
           newX < 0 ||
           newX >= BOARD_WIDTH ||
@@ -80,7 +103,6 @@ export const checkCollision = (
           return true;
         }
 
-        // 既存のブロックとの衝突チェック
         if (newY >= 0 && board[newY][newX]) {
           return true;
         }
@@ -103,7 +125,8 @@ export const mergeTetromino = (
         const boardY = tetromino.position.y + y;
         const boardX = tetromino.position.x + x;
         if (boardY >= 0 && boardY < BOARD_HEIGHT) {
-          newBoard[boardY][boardX] = tetromino.type;  // ✅ color → type に修正!
+          // おじゃまブロックは'OJAMA'として保存
+          newBoard[boardY][boardX] = tetromino.isOjama ? 'OJAMA' : tetromino.type;
         }
       }
     }
@@ -112,10 +135,17 @@ export const mergeTetromino = (
   return newBoard;
 };
 
-// ライン消去のチェックと実行
+// ライン消去のチェックと実行（おじゃまブロックを含む行は消去不可）
 export const clearLines = (board: Board): { board: Board; linesCleared: number } => {
   let linesCleared = 0;
   const newBoard = board.filter((row) => {
+    // おじゃまブロックを含む行は消去しない
+    const hasOjama = row.some(cell => cell === 'OJAMA');
+    if (hasOjama) {
+      return true; // 行を残す
+    }
+    
+    // 通常のライン消去判定
     if (row.every((cell) => cell !== null)) {
       linesCleared++;
       return false;
@@ -142,16 +172,12 @@ export const isGameOver = (board: Board, tetromino: Tetromino): boolean => {
   return checkCollision(board, tetromino);
 };
 
-// テトリミノの色を取得
+// テトリミノの色を取得（おじゃまブロックは透明を返す）
 export const getTetrominoColor = (type: string): string => {
-  const tetrominoMap: Record<string, string> = {
-    'I': TETROMINOS.I.color,
-    'O': TETROMINOS.O.color,
-    'T': TETROMINOS.T.color,
-    'S': TETROMINOS.S.color,
-    'Z': TETROMINOS.Z.color,
-    'J': TETROMINOS.J.color,
-    'L': TETROMINOS.L.color,
-  };
-  return tetrominoMap[type] || '#888888';
+  if (type === 'OJAMA') {
+    return 'transparent'; // 画像で表示するため透明
+  }
+  
+  const tetromino = TETROMINOS[type as TetrominoType];
+  return tetromino ? tetromino.color : '#666666';
 };
