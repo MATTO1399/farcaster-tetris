@@ -158,9 +158,9 @@ export const NFT_THRESHOLD_SCORE = 1000;
 
 ```
 farcaster-tetris-complete/
-├─ farcaster-tetris/        # アプリ本体
-├─ .gitignore               # このリポジトリ全体の Git 設定
-└─ LICENSE.txt              # ライセンス
+├─ farcaster-tetris/              # アプリ本体
+├─ .gitignore                     # このリポジトリ全体の Git 設定
+└─ LICENSE.txt                    # ライセンス
 
 farcaster-tetris/
 ├─ app/
@@ -207,7 +207,8 @@ farcaster-tetris/
 ├─ tsconfig.json
 └─ vercel.json
 ```
-### Game not loading
+
+#### Game not loading
 - Check browser console for errors
 - Verify all dependencies installed
 - Try clearing Next.js cache: `rm -rf .next`
