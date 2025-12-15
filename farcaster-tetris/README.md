@@ -206,6 +206,7 @@ farcaster-tetris/
 ├─ tailwind.config.ts
 ├─ tsconfig.json
 └─ vercel.json## 🐛 Troubleshooting
+```
 
 ### Game not loading
 - Check browser console for errors
