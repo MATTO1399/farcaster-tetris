@@ -156,7 +156,7 @@ export const NFT_THRESHOLD_SCORE = 1000;
 ```markdown
 ## 📁 Project Structure
 
-```text
+```
 farcaster-tetris-complete/
 ├─ farcaster-tetris/        # アプリ本体
 ├─ .gitignore               # このリポジトリ全体の Git 設定
