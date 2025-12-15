@@ -156,34 +156,57 @@ export const NFT_THRESHOLD_SCORE = 1000;
 ## 📁 Project Structure
 
 ```
-farcaster-tetris/
-├── app/
-│   ├── .well-known/
-│   │   └── farcaster.json/
-│   │       └── route.ts          # Farcaster manifest
-│   ├── api/
-│   │   ├── webhook/
-│   │   │   └── route.ts          # Webhook handler
-│   │   └── notify/
-│   │       └── route.ts          # Notification API
-│   ├── layout.tsx                # Root layout
-│   ├── page.tsx                  # Home page
-│   └── globals.css               # Global styles
-├── components/
-│   └── Game/
-│       └── TetrisGame.tsx        # Main game component
-├── utils/
-│   ├── constants.ts              # Game constants
-│   └── tetrisLogic.ts            # Core game logic
-├── public/
-│   ├── icon.png                  # App icon
-│   └── splash.png                # Splash screen
-├── next.config.mjs
-├── tailwind.config.ts
-├── tsconfig.json
-└── package.json
+farcaster-tetris-complete/
+├─ farcaster-tetris/        # アプリ本体
+├─ .gitignore               # このリポジトリ全体の Git 設定
+└─ LICENSE.txt              # ライセンス
 ```
+farcaster-tetris/
+├─ app/
+│  ├─ .well-known/
+│  │  └─ farcaster.json/
+│  │     └─ route.ts              # Farcaster manifest
+│  ├─ api/
+│  │  ├─ webhook/
+│  │  │  └─ route.ts              # Webhook handler
+│  │  └─ notify/
+│  │     └─ route.ts              # Notification API
+│  ├─ layout.tsx                  # Root layout
+│  ├─ page.tsx                    # Home page
+│  └─ globals.css                 # Global styles
+├─ components/
+│  └─ Game/
+│     └─ TetrisGame.tsx           # Main game component
+├─ contracts/                     # NFT / smart contract 関連ファイル
+├─ lib/                           # 共通ライブラリ・ヘルパー
+├─ utils/
+│  ├─ constants.ts                # Game constants
+│  └─ tetrisLogic.ts              # Core game logic
+├─ public/
+│  ├─ icon.png                    # App icon
+│  └─ splash.png                  # Splash screen
+├─ .env.example                   # Env サンプル
+├─ .gitignore
+├─ NFT_IMPLEMENTATION_GUIDE.md
+├─ PROJECT_SUMMARY.md
+├─ QUICKSTART.md
+├─ README.md
+├─ README.NFT.md
+├─ SECURITY.md
+├─ SECURITY_IMPLEMENTATION_GUIDE.md
+├─ SECURITY_SUMMARY.md
+├─ SETUP_GUIDE.md
+├─ next.config.mjs
+├─ next.config.secure.mjs
+├─ package.json
+├─ package.secure.json
+├─ pnpm-lock.yaml
+├─ postcss.config.mjs
+├─ tailwind.config.ts
+├─ tsconfig.json
+└─ vercel.json
 
+```
 ## 🐛 Troubleshooting
 
 ### Game not loading
