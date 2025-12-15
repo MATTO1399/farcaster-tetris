@@ -1,3 +1,0 @@
-[33m9a2c91a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Fix zod validation error handling
-[33me8a01a0[m Add vercel.json to specify build configuration
-[33m38b3f81[m Add zod for input validation and security
