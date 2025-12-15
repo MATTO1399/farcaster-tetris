@@ -153,7 +153,6 @@ export const NFT_THRESHOLD_SCORE = 1000;
 - **Swipe Down**: Hard drop
 - **Tap**: Rotate
 
-```markdown
 ## 📁 Project Structure
 
 ```
@@ -208,7 +207,9 @@ farcaster-tetris/
 └─ vercel.json
 ```
 
-#### Game not loading
+## 🐛 Troubleshooting
+
+### Game not loading
 - Check browser console for errors
 - Verify all dependencies installed
 - Try clearing Next.js cache: `rm -rf .next`
@@ -232,7 +233,6 @@ Copyright © 2025 MATTO1399. All rights reserved.
 
 This project is for viewing and reference purposes only. 
 Unauthorized copying, modification, distribution, or commercial use is prohibited without explicit permission.
-
 
 ## 🤝 Contributing
 
