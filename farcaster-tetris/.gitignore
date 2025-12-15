@@ -36,12 +36,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
-.env*.local
-
 # Batch scripts
 *.bat
-
-# Batch scripts
-delete-deploys.bat
-

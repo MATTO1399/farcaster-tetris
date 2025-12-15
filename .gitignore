@@ -1,7 +1,0 @@
-.vercel
-
-# Batch scripts
-*.bat
-
-# Batch scripts
-delete-deploys.bat
