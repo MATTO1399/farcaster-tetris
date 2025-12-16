@@ -38,3 +38,5 @@ next-env.d.ts
 
 # Batch scripts
 *.bat
+.vercel
+.env*.local
