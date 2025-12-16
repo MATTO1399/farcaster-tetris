@@ -379,6 +379,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const hardDrop = useCallback(() => {
     if (isPaused || !currentPiece) return;
+    
     let dropPosition = { ...position };
     while (true) {
       const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
@@ -388,8 +389,57 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       }
       dropPosition = nextPos;
     }
-    setPosition(dropPosition);
-  }, [board, currentPiece, position, isPaused]);
+    
+    // 位置更新と同時にロックを実行（残像防止）
+    const pieceToMerge = { ...currentPiece, position: dropPosition };
+    let newBoard = mergeTetromino(board, pieceToMerge);
+    let newScore = score;
+    
+    // おじゃまブロックが着地した場合、すべてのブロックを消してスコアに換算
+    if (currentPiece.isOjama) {
+      let blockCount = 0;
+      for (let y = 0; y < BOARD_HEIGHT; y++) {
+        for (let x = 0; x < BOARD_WIDTH; x++) {
+          if (newBoard[y][x] !== null) {
+            blockCount++;
+          }
+        }
+      }
+      
+      newBoard = createBoard();
+      const bonusScore = blockCount * 10;
+      newScore = score + bonusScore;
+      setScore(newScore);
+    } else {
+      const { board: clearedBoard, linesCleared } = clearLines(newBoard);
+      newBoard = clearedBoard;
+      
+      setLines(prev => prev + linesCleared);
+      newScore = score + calculateScore(linesCleared, level);
+      setScore(newScore);
+    }
+    
+    const newLevel = Math.floor(newScore / 1000) + 1;
+    if (newLevel > level) {
+      setLevel(newLevel);
+    }
+    
+    setBoard(newBoard);
+
+    const newPiece = nextPiece;
+    const newNext = getRandomTetromino();
+    
+    if (newPiece && checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
+      setGameOver(true);
+      onGameOver?.(newScore);
+      return;
+    }
+    
+    setCurrentPiece(newPiece);
+    setNextPiece(newNext);
+    setPosition({ x: 3, y: 0 });
+    setRotationState(0);
+  }, [board, currentPiece, nextPiece, position, isPaused, score, level, lines, onGameOver]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
