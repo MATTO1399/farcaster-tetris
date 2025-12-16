@@ -249,7 +249,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       let config: LayoutConfig;
 
       if (width <= 375) {
-       цый
         if (aspectRatio > 2.0) {
           config = { boardScale: 0.68, sidePanelWidth: 80, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
         } else {
