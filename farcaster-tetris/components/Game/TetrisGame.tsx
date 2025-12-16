@@ -548,7 +548,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   };
 
   const handleShowHistory = () => {
-    // TODO: 履歴機能の実装（オプション）
+    // TODO: 履歴機能の実装(オプション)
     alert('履歴機能は今後実装予定です');
   };
 
@@ -803,30 +803,17 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
               {renderNextPiece()}
             </div>
 
-            <div className="space-y-1">
-              <button
-                onClick={togglePause}
-                className="w-full py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
-                style={{
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  WebkitTouchCallout: 'none'
-                }}
-              >
-                {isPaused ? 'RESUME' : 'PAUSE'}
-              </button>
-              <button
-                onClick={handleBackToMenu}
-                className="w-full py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors"
-                style={{
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  WebkitTouchCallout: 'none'
-                }}
-              >
-                MENU
-              </button>
-            </div>
+            <button
+              onClick={togglePause}
+              className="w-full py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
+              style={{
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                WebkitTouchCallout: 'none'
+              }}
+            >
+              {isPaused ? 'RESTART' : 'PAUSE'}
+            </button>
           </div>
         </div>
       </div>
