@@ -17,9 +17,9 @@ import {
 import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
 import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
 import type { LeaderboardEntry } from '@/lib/leaderboard';
-import type { HistoryEntry } from '@/lib/history';
 import GameMenu from './GameMenu';
 import LeaderboardModal from './LeaderboardModal';
+import type { HistoryEntry } from '@/lib/history';
 import HistoryModal from './HistoryModal';
 
 interface TetrisGameProps {
@@ -32,6 +32,7 @@ interface LayoutConfig {
   buttonSize: number;
   gap: number;
   paddingX: number;
+  paddingTop: number;
 }
 
 interface FarcasterUser {
@@ -50,7 +51,7 @@ const SRS_KICK_TABLE: Record<string, Position[]> = {
   '2->1': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: -2 }, { x: -1, y: -2 }],
   '2->3': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }],
   '3->2': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }],
-  '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }],
+  '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: 2 }],
   '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }]
 };
 
@@ -91,15 +92,25 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     sidePanelWidth: 85,
     buttonSize: 56,
     gap: 5,
-    paddingX: 12
+    paddingX: 12,
+    paddingTop: 30
   });
 
   useLayoutEffect(() => {
     const el = controlsRef.current;
-    if (!el) return;
+    if (!el) {
+      console.log('[DEBUG] controlsRef.current is null');
+      return;
+    }
 
     const update = () => {
-      setControlsHeight(el.offsetHeight || 0);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const height = el.offsetHeight;
+          console.log('[DEBUG] controlsHeight measured:', height);
+          setControlsHeight(height);
+        });
+      });
     };
 
     update();
@@ -111,15 +122,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     vv?.addEventListener('resize', update);
     vv?.addEventListener('scroll', update);
 
-    window.addEventListener('orientationchange', update);
-
     return () => {
       ro.disconnect();
       vv?.removeEventListener('resize', update);
       vv?.removeEventListener('scroll', update);
-      window.removeEventListener('orientationchange', update);
     };
-  }, []);
+  }, [showMenu, layoutConfig.buttonSize, layoutConfig.gap]);
 
   useEffect(() => {
     const calculateLayout = () => {
@@ -136,7 +144,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             sidePanelWidth: 80,
             buttonSize: 52,
             gap: 5,
-            paddingX: 8
+            paddingX: 8,
+            paddingTop: 15
           };
         } else {
           config = {
@@ -144,7 +153,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             sidePanelWidth: 80,
             buttonSize: 50,
             gap: 5,
-            paddingX: 8
+            paddingX: 8,
+            paddingTop: 20
           };
         }
       } else if (width <= 390) {
@@ -153,7 +163,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           sidePanelWidth: 85,
           buttonSize: 54,
           gap: 5,
-          paddingX: 10
+          paddingX: 10,
+          paddingTop: 25
         };
       } else if (width <= 414) {
         config = {
@@ -161,7 +172,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           sidePanelWidth: 90,
           buttonSize: 56,
           gap: 5,
-          paddingX: 12
+          paddingX: 12,
+          paddingTop: 30
         };
       } else if (width <= 768) {
         if (aspectRatio < 1.0) {
@@ -170,7 +182,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             sidePanelWidth: 95,
             buttonSize: 60,
             gap: 5,
-            paddingX: 16
+            paddingX: 16,
+            paddingTop: 20
           };
         } else {
           config = {
@@ -178,7 +191,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             sidePanelWidth: 100,
             buttonSize: 64,
             gap: 5,
-            paddingX: 16
+            paddingX: 16,
+            paddingTop: 30
           };
         }
       } else {
@@ -187,7 +201,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           sidePanelWidth: 110,
           buttonSize: 68,
           gap: 5,
-          paddingX: 20
+          paddingX: 20,
+          paddingTop: 30
         };
       }
       
@@ -745,7 +760,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         <HistoryModal
           isOpen={showHistory}
           onClose={() => setShowHistory(false)}
-          currentUserFid={user?.fid}
+          userFid={user?.fid}
         />
       </>
     );
@@ -764,8 +779,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       <div
         className="flex-1 w-full flex flex-col items-center"
         style={{
-           paddingTop: '30px',
-           paddingBottom: `${controlsHeight}px`,
+          paddingTop: `${layoutConfig.paddingTop}px`,
+          paddingBottom: `${controlsHeight}px`,
         }}
       >
         <div className="text-center mb-4">
@@ -792,20 +807,30 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
             {renderBoard()}
             {gameOver && (
-              <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-30">
-                <div className="bg-gray-800 p-6 rounded-lg text-center">
-                  <div className="text-2xl font-bold mb-4">GAME OVER</div>
-                  <div className="text-xl mb-6">Score: {score}</div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg z-30">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-red-500 mb-4">GAME OVER</p>
+                  <p className="text-xl text-white mb-4">Score: {score}</p>
                   <div className="flex flex-col gap-3 w-full">
                     <button
                       onClick={startNewGame}
-                      className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold rounded-full transition-colors"
+                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-full font-semibold transition-colors shadow-lg"
+                      style={{
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        WebkitTouchCallout: 'none'
+                      }}
                     >
                       RETRY
                     </button>
                     <button
                       onClick={handleBackToMenu}
-                      className="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-full transition-colors"
+                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-full font-semibold transition-colors shadow-lg"
+                      style={{
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        WebkitTouchCallout: 'none'
+                      }}
                     >
                       MENU
                     </button>
@@ -973,7 +998,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       <HistoryModal
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
-        currentUserFid={user?.fid}
+        userFid={user?.fid}
       />
     </div>
   );
