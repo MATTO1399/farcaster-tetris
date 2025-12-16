@@ -199,14 +199,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const [isInFarcaster, setIsInFarcaster] = useState(false);
   const [androidLike, setAndroidLike] = useState(false);
-
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
   }, []);
 
-  // WebViewの高さズレ対策：visualViewport を CSS変数へ（全端末）
   useEffect(() => {
     const setAppHeight = () => {
       const h = window.visualViewport?.height ?? window.innerHeight;
@@ -289,8 +287,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       try {
         const context = await sdk.context;
         setIsInFarcaster(true);
-
-        // UAが偽装でも拾える場合があるので再評価
         setAndroidLike(isAndroidLike());
 
         if (context.user) {
@@ -310,17 +306,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
-  // ====== Android(Farcaster)縦長だけ「少し」下げる（下げすぎ防止） ======
-  // あなたのSeeker: ratio=1.94, h≈775, w=400
-  // → ここで 40〜70px くらいだけ下げるのが自然
+  // Android(Farcaster)縦長だけ “少しだけ” 下げる（下げすぎ防止）
   const shouldTweakAndroidSpacing =
     (androidLike && viewport.w <= 450 && viewport.ratio >= 1.85) ||
     (isInFarcaster && viewport.w <= 450 && viewport.ratio >= 1.90);
 
-  // “余った高さ”全部ではなく、上限付きの px で下げる
-  // hが大きいほど少し増やすが、maxで止める
   const androidPushPx = shouldTweakAndroidSpacing
-    ? Math.round(clamp((viewport.h - 680) * 0.6, 24, 72))
+    ? Math.round(clamp((viewport.h - 680) * 0.35, 16, 44))
     : 0;
 
   useEffect(() => {
@@ -641,6 +633,41 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const handleShowRanking = () => setShowLeaderboard(true);
   const handleShowHistory = () => setShowHistory(true);
 
+  const renderNextPiece = () => {
+    if (!nextPiece) return null;
+    const isOjamaNext = nextPiece.isOjama;
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
+        <div style={{ display: 'inline-block', position: 'relative' }}>
+          {nextPiece.shape.map((row, y) => (
+            <div key={y} style={{ display: 'flex' }}>
+              {row.map((cell, x) => (
+                <div
+                  key={`${y}-${x}`}
+                  style={{
+                    width: 15,
+                    height: 15,
+                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
+                    border: cell === 1 ? '1px solid #444' : 'none',
+                    borderRadius: '1px',
+                    position: 'relative',
+                  }}
+                />
+              ))}
+            </div>
+          ))}
+
+          {isOjamaNext && (
+            <div style={{ position: 'absolute', top: '-1px', left: '-1px', width: '32px', height: '32px', pointerEvents: 'none' }}>
+              <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderBoard = () => {
     const displayBoard = board.map((row) => [...row]);
 
@@ -725,41 +752,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     );
   };
 
-  const renderNextPiece = () => {
-    if (!nextPiece) return null;
-    const isOjamaNext = nextPiece.isOjama;
-
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
-        <div style={{ display: 'inline-block', position: 'relative' }}>
-          {nextPiece.shape.map((row, y) => (
-            <div key={y} style={{ display: 'flex' }}>
-              {row.map((cell, x) => (
-                <div
-                  key={`${y}-${x}`}
-                  style={{
-                    width: 15,
-                    height: 15,
-                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
-                    border: cell === 1 ? '1px solid #444' : 'none',
-                    borderRadius: '1px',
-                    position: 'relative',
-                  }}
-                />
-              ))}
-            </div>
-          ))}
-
-          {isOjamaNext && (
-            <div style={{ position: 'absolute', top: '-1px', left: '-1px', width: '32px', height: '32px', pointerEvents: 'none' }}>
-              <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   if (showMenu) {
     return (
       <>
@@ -807,7 +799,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <br />
           ratio={viewport.ratio.toFixed(2)} h={viewport.h} w={viewport.w}
           <br />
-          tweakAndroidSpacing={String(shouldTweakAndroidSpacing)} pushPx={androidPushPx}
+          tweak={String(shouldTweakAndroidSpacing)} pushPx={androidPushPx}
         </div>
       )}
 
@@ -823,7 +815,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
         </div>
 
-        {/* ★Android縦長だけ：押し下げ量を「固定px（上限付き）」で調整 */}
+        {/* ★Android縦長だけ：pxで少しだけ下げる */}
         {androidPushPx > 0 ? <div style={{ height: androidPushPx }} /> : null}
 
         <div
@@ -879,7 +871,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             </div>
 
             <button
-              onClick={togglePause}
+              onClick={() => setIsPaused((p) => !p)}
               className="w-full py-1.5 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white rounded-lg text-xs font-semibold transition-colors"
             >
               {isPaused ? 'RESTART' : 'PAUSE'}
@@ -888,7 +880,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
       </div>
 
-      {/* Controls (NOT fixed) */}
+      {/* Controls */}
       <div
         className="shrink-0 w-full flex flex-col items-center bg-gradient-to-t from-purple-900/95 to-transparent backdrop-blur-sm py-2"
         style={{
