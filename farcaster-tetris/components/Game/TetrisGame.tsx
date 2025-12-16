@@ -179,6 +179,35 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ★ Android判定（Androidだけ詰める）
+  const [isAndroid, setIsAndroid] = useState(false);
+  useEffect(() => {
+    setIsAndroid(/Android/i.test(navigator.userAgent));
+  }, []);
+
+  // ★ Android(WebView)だけ：実表示高さをCSS変数に入れる（100dvhがズレる対策）
+  useEffect(() => {
+    if (!isAndroid) return;
+
+    const setAppHeight = () => {
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${h}px`);
+    };
+
+    setAppHeight();
+    window.visualViewport?.addEventListener('resize', setAppHeight);
+    window.visualViewport?.addEventListener('scroll', setAppHeight);
+    window.addEventListener('resize', setAppHeight);
+    window.addEventListener('orientationchange', setAppHeight);
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', setAppHeight);
+      window.visualViewport?.removeEventListener('scroll', setAppHeight);
+      window.removeEventListener('resize', setAppHeight);
+      window.removeEventListener('orientationchange', setAppHeight);
+    };
+  }, [isAndroid]);
+
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
     sidePanelWidth: 85,
@@ -568,7 +597,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   };
 
   const handleShowRanking = () => setShowLeaderboard(true);
-
   const handleShowHistory = () => setShowHistory(true);
 
   const renderBoard = () => {
@@ -643,7 +671,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                         zIndex: 10,
                       }}
                     >
-                      <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
+                      <Image
+                        src="/ojama-block.png"
+                        alt="Ojama Block"
+                        fill
+                        style={{ objectFit: 'cover' }}
+                        unoptimized
+                      />
                     </div>
                   )}
                 </div>
@@ -681,7 +715,16 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           ))}
 
           {isOjamaNext && (
-            <div style={{ position: 'absolute', top: '-1px', left: '-1px', width: '32px', height: '32px', pointerEvents: 'none' }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: '-1px',
+                left: '-1px',
+                width: '32px',
+                height: '32px',
+                pointerEvents: 'none',
+              }}
+            >
               <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
             </div>
           )}
@@ -708,17 +751,23 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   return (
     <div
-      className="flex flex-col w-full h-[100dvh] overflow-hidden bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
+      className="flex flex-col w-full overflow-hidden bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
       style={{
+        // ★ Androidだけ実測高さ、それ以外は100dvh
+        height: isAndroid ? 'var(--app-height)' : '100dvh',
         paddingTop: 'env(safe-area-inset-top)',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         WebkitTouchCallout: 'none',
       }}
     >
-      {/* Main (scroll area) */}
+      {/* Main */}
       <div
-        className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center"
+        className={[
+          'flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center',
+          // ★ Androidだけ：余った縦スペースを上側に吸わせてゲームを下へ寄せる
+          isAndroid ? 'justify-between' : '',
+        ].join(' ')}
         style={{
           paddingTop: `${layoutConfig.paddingTop}px`,
           paddingBottom: '12px',
