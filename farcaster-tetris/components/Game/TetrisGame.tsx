@@ -163,6 +163,10 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   ],
 };
 
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
 function getUADataPlatform(): string {
   const nav: any = typeof navigator !== 'undefined' ? navigator : null;
   const p = nav?.userAgentData?.platform ?? nav?.platform ?? '';
@@ -193,20 +197,16 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 「Farcaster mini app の中」判定（sdk.context が取れたら true）
   const [isInFarcaster, setIsInFarcaster] = useState(false);
-
-  // 端末判定（UAにAndroidが出ないWebView対策で UAData/platform も見る）
   const [androidLike, setAndroidLike] = useState(false);
 
-  // viewport（縦長判定に使う）
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
   }, []);
 
-  // WebViewで100dvhがズレるので、visualViewportから実高さをCSS変数に入れる（全端末）
+  // WebViewの高さズレ対策：visualViewport を CSS変数へ（全端末）
   useEffect(() => {
     const setAppHeight = () => {
       const h = window.visualViewport?.height ?? window.innerHeight;
@@ -249,6 +249,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       let config: LayoutConfig;
 
       if (width <= 375) {
+       цый
         if (aspectRatio > 2.0) {
           config = { boardScale: 0.68, sidePanelWidth: 80, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
         } else {
@@ -290,7 +291,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         const context = await sdk.context;
         setIsInFarcaster(true);
 
-        // ここでAndroid判定も更新（UAが偽装されていても platform 情報で拾える可能性）
+        // UAが偽装でも拾える場合があるので再評価
         setAndroidLike(isAndroidLike());
 
         if (context.user) {
@@ -310,17 +311,18 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
-  // ★今回の本命条件：
-  // - Farcaster内（= mini app）
-  // - 縦長（ratio>=1.85）  ※あなたのSeekerは1.94だった
-  // - 幅がスマホ域（<=450）
-  // - Androidっぽい（UAData/platform/UAで判定）
-  //
-  // もしUAが全部隠されて androidLike が false のままでも、
-  // 「Farcaster内かつ縦長スマホ」なら発動するように fallback を入れてます。
-  const shouldPushBoardDown =
-    (androidLike && viewport.ratio >= 1.85 && viewport.w <= 450) ||
-    (isInFarcaster && viewport.ratio >= 1.90 && viewport.w <= 450);
+  // ====== Android(Farcaster)縦長だけ「少し」下げる（下げすぎ防止） ======
+  // あなたのSeeker: ratio=1.94, h≈775, w=400
+  // → ここで 40〜70px くらいだけ下げるのが自然
+  const shouldTweakAndroidSpacing =
+    (androidLike && viewport.w <= 450 && viewport.ratio >= 1.85) ||
+    (isInFarcaster && viewport.w <= 450 && viewport.ratio >= 1.90);
+
+  // “余った高さ”全部ではなく、上限付きの px で下げる
+  // hが大きいほど少し増やすが、maxで止める
+  const androidPushPx = shouldTweakAndroidSpacing
+    ? Math.round(clamp((viewport.h - 680) * 0.6, 24, 72))
+    : 0;
 
   useEffect(() => {
     if (gameOver || isPaused || !gameStarted || !currentPiece) {
@@ -806,7 +808,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <br />
           ratio={viewport.ratio.toFixed(2)} h={viewport.h} w={viewport.w}
           <br />
-          shouldPushBoardDown={String(shouldPushBoardDown)}
+          tweakAndroidSpacing={String(shouldTweakAndroidSpacing)} pushPx={androidPushPx}
         </div>
       )}
 
@@ -822,8 +824,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
         </div>
 
-        {/* ★ここで余白を吸わせる：縦長端末だけボードを下に寄せる */}
-        {shouldPushBoardDown ? <div style={{ flex: 1, minHeight: 0 }} /> : null}
+        {/* ★Android縦長だけ：押し下げ量を「固定px（上限付き）」で調整 */}
+        {androidPushPx > 0 ? <div style={{ height: androidPushPx }} /> : null}
 
         <div
           className="flex items-center justify-center w-full max-w-md"
@@ -831,7 +833,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             gap: '5px',
             paddingLeft: `${layoutConfig.paddingX}px`,
             paddingRight: `${layoutConfig.paddingX}px`,
-            marginTop: shouldPushBoardDown ? 'auto' : undefined,
           }}
         >
           <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
