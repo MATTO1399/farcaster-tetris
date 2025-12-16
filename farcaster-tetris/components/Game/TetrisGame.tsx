@@ -43,7 +43,7 @@ interface FarcasterUser {
 
 type RotationState = 0 | 1 | 2 | 3;
 
-const DEBUG_OVERLAY = true; // 確認できたら false に
+const DEBUG_OVERLAY = false; // 確認できたら false に
 
 const SRS_KICK_TABLE: Record<string, Position[]> = {
   '0->1': [
