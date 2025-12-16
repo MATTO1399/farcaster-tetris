@@ -751,7 +751,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         className="flex-1 w-full flex flex-col items-center"
         style={{
            paddingTop: '30px',
-           paddingBottom: `calc(${controlsHeight}px + env(safe-area-inset-bottom))`,
+           paddingBottom: `calc(${controlsHeight * 1.2}px + env(safe-area-inset-bottom) + 5vh)`,
         }}
       >
         <div className="text-center mb-4">
