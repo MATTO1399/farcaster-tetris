@@ -19,8 +19,6 @@ import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
 import type { LeaderboardEntry } from '@/lib/leaderboard';
 import GameMenu from './GameMenu';
 import LeaderboardModal from './LeaderboardModal';
-import type { HistoryEntry } from '@/lib/history';
-import HistoryModal from './HistoryModal';
 
 interface TetrisGameProps {
   onGameOver?: (score: number) => void;
@@ -80,7 +78,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -312,31 +309,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
   };
 
-  const saveScoreToHistory = async (finalScore: number) => {
-    if (!user) return;
-
-    try {
-      const entry: HistoryEntry = {
-        fid: user.fid,
-        username: user.username,
-        displayName: user.displayName,
-        pfpUrl: user.pfpUrl,
-        score: finalScore,
-        level,
-        lines,
-        timestamp: Date.now(),
-      };
-
-      await fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-      });
-    } catch (error) {
-      console.error('Failed to save history:', error);
-    }
-  };
-
   const lockPiece = useCallback((lockPosition: Position) => {
     if (!currentPiece || !nextPiece) return;
 
@@ -380,7 +352,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     if (checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
       setGameOver(true);
       saveScoreToLeaderboard(newScore);
-      saveScoreToHistory(newScore);
       onGameOver?.(newScore);
       return;
     }
@@ -528,7 +499,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     if (newPiece && checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
       setGameOver(true);
       saveScoreToLeaderboard(newScore);
-      saveScoreToHistory(newScore);
       onGameOver?.(newScore);
       return;
     }
@@ -603,7 +573,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   };
 
   const handleShowHistory = () => {
-    setShowHistory(true);
+    alert('履歴機能は今後実装予定です');
   };
 
   const renderBoard = () => {
@@ -756,11 +726,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           isOpen={showLeaderboard}
           onClose={() => setShowLeaderboard(false)}
           currentUserFid={user?.fid}
-        />
-        <HistoryModal
-          isOpen={showHistory}
-          onClose={() => setShowHistory(false)}
-          userFid={user?.fid}
         />
       </>
     );
@@ -994,11 +959,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         isOpen={showLeaderboard}
         onClose={() => setShowLeaderboard(false)}
         currentUserFid={user?.fid}
-      />
-      <HistoryModal
-        isOpen={showHistory}
-        onClose={() => setShowHistory(false)}
-        userFid={user?.fid}
       />
     </div>
   );
