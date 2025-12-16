@@ -43,7 +43,7 @@ interface FarcasterUser {
 
 type RotationState = 0 | 1 | 2 | 3;
 
-const DEBUG_OVERLAY = true; // ← 確認が終わったら false にしてOK
+const DEBUG_OVERLAY = true; // 確認できたら false に
 
 const SRS_KICK_TABLE: Record<string, Position[]> = {
   '0->1': [
@@ -163,6 +163,18 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   ],
 };
 
+function getUADataPlatform(): string {
+  const nav: any = typeof navigator !== 'undefined' ? navigator : null;
+  const p = nav?.userAgentData?.platform ?? nav?.platform ?? '';
+  return String(p || '');
+}
+
+function isAndroidLike(): boolean {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const plat = getUADataPlatform();
+  return /Android/i.test(ua) || /Android/i.test(plat);
+}
+
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
@@ -181,33 +193,20 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ---- Platform / viewport（Android縦長だけ“詰める”ため） ----
-  const [platform, setPlatform] = useState<'android' | 'ios' | 'web' | 'unknown'>('unknown');
+  // 「Farcaster mini app の中」判定（sdk.context が取れたら true）
+  const [isInFarcaster, setIsInFarcaster] = useState(false);
+
+  // 端末判定（UAにAndroidが出ないWebView対策で UAData/platform も見る）
+  const [androidLike, setAndroidLike] = useState(false);
+
+  // viewport（縦長判定に使う）
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
   useEffect(() => {
-    const ua = navigator.userAgent || '';
-    const uaAndroid = /Android/i.test(ua);
-    const uaIOS = /iPad|iPhone|iPod/i.test(ua);
-
-    if (uaAndroid) setPlatform('android');
-    else if (uaIOS) setPlatform('ios');
-    else setPlatform('web');
-
-    // Farcaster context が取れれば上書き（取れなくてもOK）
-    (async () => {
-      try {
-        const ctx: any = await sdk.context;
-        const p = (ctx?.client?.platform || ctx?.platform || '').toString().toLowerCase();
-        if (p.includes('android')) setPlatform('android');
-        else if (p.includes('ios')) setPlatform('ios');
-      } catch {
-        // ignore
-      }
-    })();
+    setAndroidLike(isAndroidLike());
   }, []);
 
-  // WebViewで100dvhがズレるので、visualViewportから実高さをCSS変数に入れる（全端末で実行）
+  // WebViewで100dvhがズレるので、visualViewportから実高さをCSS変数に入れる（全端末）
   useEffect(() => {
     const setAppHeight = () => {
       const h = window.visualViewport?.height ?? window.innerHeight;
@@ -232,13 +231,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
   }, []);
 
-  const uaAndroid = /Android/i.test(navigator.userAgent || '');
-  const isAndroid = platform === 'android' || uaAndroid;
-
-  // ★ Android縦長端末だけ：ボードを下に寄せる（間が広すぎ対策）
-  const shouldPushBoardDown = isAndroid && viewport.ratio >= 2.0;
-
-  // ---- Layout config ----
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
     sidePanelWidth: 85,
@@ -292,11 +284,15 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
-  // ---- Farcaster init ----
   useEffect(() => {
     const initFarcaster = async () => {
       try {
         const context = await sdk.context;
+        setIsInFarcaster(true);
+
+        // ここでAndroid判定も更新（UAが偽装されていても platform 情報で拾える可能性）
+        setAndroidLike(isAndroidLike());
+
         if (context.user) {
           setUser({
             fid: context.user.fid,
@@ -305,6 +301,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             pfpUrl: context.user.pfpUrl || '',
           });
         }
+
         sdk.actions.ready();
       } catch (error) {
         console.error('Farcaster SDK error:', error);
@@ -313,7 +310,18 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
-  // ---- Game loop ----
+  // ★今回の本命条件：
+  // - Farcaster内（= mini app）
+  // - 縦長（ratio>=1.85）  ※あなたのSeekerは1.94だった
+  // - 幅がスマホ域（<=450）
+  // - Androidっぽい（UAData/platform/UAで判定）
+  //
+  // もしUAが全部隠されて androidLike が false のままでも、
+  // 「Farcaster内かつ縦長スマホ」なら発動するように fallback を入れてます。
+  const shouldPushBoardDown =
+    (androidLike && viewport.ratio >= 1.85 && viewport.w <= 450) ||
+    (isInFarcaster && viewport.ratio >= 1.90 && viewport.w <= 450);
+
   useEffect(() => {
     if (gameOver || isPaused || !gameStarted || !currentPiece) {
       if (gameLoopRef.current) {
@@ -792,7 +800,9 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             lineHeight: 1.2,
           }}
         >
-          platform={platform} uaAndroid={String(uaAndroid)}
+          inFarcaster={String(isInFarcaster)} androidLike={String(androidLike)}
+          <br />
+          uaPlatform={getUADataPlatform()}
           <br />
           ratio={viewport.ratio.toFixed(2)} h={viewport.h} w={viewport.w}
           <br />
@@ -800,7 +810,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
       )}
 
-      {/* Main (scroll area) */}
+      {/* Main */}
       <div
         className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center"
         style={{
@@ -812,8 +822,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
         </div>
 
-        {/* ★ Android縦長だけ：余った縦スペースをここで吸わせてゲームを下に寄せる */}
-        {shouldPushBoardDown ? <div style={{ flex: 1 }} /> : null}
+        {/* ★ここで余白を吸わせる：縦長端末だけボードを下に寄せる */}
+        {shouldPushBoardDown ? <div style={{ flex: 1, minHeight: 0 }} /> : null}
 
         <div
           className="flex items-center justify-center w-full max-w-md"
