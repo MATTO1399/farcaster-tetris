@@ -16,6 +16,9 @@ import {
 } from '@/utils/tetrisLogic';
 import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
 import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
+import type { LeaderboardEntry } from '@/lib/leaderboard';
+import GameMenu from './GameMenu';
+import LeaderboardModal from './LeaderboardModal';
 
 interface TetrisGameProps {
   onGameOver?: (score: number) => void;
@@ -27,6 +30,13 @@ interface LayoutConfig {
   buttonSize: number;
   gap: number;
   paddingX: number;
+}
+
+interface FarcasterUser {
+  fid: number;
+  username: string;
+  displayName: string;
+  pfpUrl: string;
 }
 
 // SRS回転状態 (0: spawn, 1: right, 2: 2, 3: left)
@@ -68,6 +78,9 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [gameOver, setGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
+  const [showMenu, setShowMenu] = useState(true);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   
   const controlsRef = useRef<HTMLDivElement | null>(null);
@@ -186,6 +199,17 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       try {
         const context = await sdk.context;
         console.log('Farcaster context:', context);
+        
+        // ユーザー情報を設定
+        if (context.user) {
+          setUser({
+            fid: context.user.fid,
+            username: context.user.username || `user${context.user.fid}`,
+            displayName: context.user.displayName || context.user.username || `User ${context.user.fid}`,
+            pfpUrl: context.user.pfpUrl || '',
+          });
+        }
+        
         sdk.actions.ready();
       } catch (error) {
         console.error('Farcaster SDK error:', error);
@@ -235,6 +259,31 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
   }, [position, board, currentPiece, gameStarted, gameOver, isPaused]);
 
+  const saveScoreToLeaderboard = async (finalScore: number) => {
+    if (!user) return;
+
+    try {
+      const entry: LeaderboardEntry = {
+        fid: user.fid,
+        username: user.username,
+        displayName: user.displayName,
+        pfpUrl: user.pfpUrl,
+        score: finalScore,
+        level,
+        lines,
+        timestamp: Date.now(),
+      };
+
+      await fetch('/api/leaderboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    } catch (error) {
+      console.error('Failed to save score:', error);
+    }
+  };
+
   const lockPiece = useCallback((lockPosition: Position) => {
     if (!currentPiece || !nextPiece) return;
 
@@ -242,7 +291,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     let newBoard = mergeTetromino(board, pieceToMerge);
     let newScore = score;
     
-    // おじゃまブロックが着地した場合、すべてのブロックを消してスコアに換算
     if (currentPiece.isOjama) {
       let blockCount = 0;
       for (let y = 0; y < BOARD_HEIGHT; y++) {
@@ -253,15 +301,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         }
       }
       
-      // すべてのブロックを消去
       newBoard = createBoard();
-      
-      // ブロック数×10点をスコアに加算
       const bonusScore = blockCount * 10;
       newScore = score + bonusScore;
       setScore(newScore);
     } else {
-      // 通常のライン消去処理
       const { board: clearedBoard, linesCleared } = clearLines(newBoard);
       newBoard = clearedBoard;
       
@@ -270,7 +314,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       setScore(newScore);
     }
     
-    // スコアベースでレベルアップ（1000点ごと）
     const newLevel = Math.floor(newScore / 1000) + 1;
     if (newLevel > level) {
       setLevel(newLevel);
@@ -283,6 +326,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     
     if (checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
       setGameOver(true);
+      saveScoreToLeaderboard(newScore);
       onGameOver?.(newScore);
       return;
     }
@@ -291,7 +335,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
-  }, [board, currentPiece, nextPiece, level, score, lines, onGameOver]);
+  }, [board, currentPiece, nextPiece, level, score, lines, onGameOver, user]);
 
   const moveLeft = useCallback(() => {
     if (isPaused || !currentPiece) return;
@@ -390,12 +434,10 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       dropPosition = nextPos;
     }
     
-    // 位置更新と同時にロックを実行（残像防止）
     const pieceToMerge = { ...currentPiece, position: dropPosition };
     let newBoard = mergeTetromino(board, pieceToMerge);
     let newScore = score;
     
-    // おじゃまブロックが着地した場合、すべてのブロックを消してスコアに換算
     if (currentPiece.isOjama) {
       let blockCount = 0;
       for (let y = 0; y < BOARD_HEIGHT; y++) {
@@ -431,6 +473,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     
     if (newPiece && checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
       setGameOver(true);
+      saveScoreToLeaderboard(newScore);
       onGameOver?.(newScore);
       return;
     }
@@ -439,7 +482,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
-  }, [board, currentPiece, nextPiece, position, isPaused, score, level, lines, onGameOver]);
+  }, [board, currentPiece, nextPiece, position, isPaused, score, level, lines, onGameOver, user]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
@@ -473,7 +516,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [gameStarted, gameOver, isPaused, moveLeft, moveRight, moveDown, rotate, rotateCounterClockwise, hardDrop]);
 
-  const resetGame = () => {
+  const startNewGame = () => {
     setBoard(createBoard());
     const firstPiece = getRandomTetromino();
     const secondPiece = getRandomTetromino();
@@ -487,10 +530,26 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setGameOver(false);
     setIsPaused(false);
     setGameStarted(true);
+    setShowMenu(false);
   };
 
   const togglePause = () => {
     setIsPaused(prev => !prev);
+  };
+
+  const handleBackToMenu = () => {
+    setGameStarted(false);
+    setShowMenu(true);
+    setGameOver(false);
+  };
+
+  const handleShowRanking = () => {
+    setShowLeaderboard(true);
+  };
+
+  const handleShowHistory = () => {
+    // TODO: 履歴機能の実装（オプション）
+    alert('履歴機能は今後実装予定です');
   };
 
   const renderBoard = () => {
@@ -510,7 +569,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       });
     }
 
-    // おじゃまブロックの2×2の左上位置を検出
     const ojamaBlocks = new Set<string>();
     for (let y = 0; y < BOARD_HEIGHT - 1; y++) {
       for (let x = 0; x < BOARD_WIDTH - 1; x++) {
@@ -530,7 +588,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         {displayBoard.map((row, y) => (
           <div key={y} style={{ display: 'flex' }}>
             {row.map((cell, x) => {
-              const isOjama = cell === 'OJAMA';
               const isOjamaTopLeft = ojamaBlocks.has(`${y},${x}`);
               const isPartOfOjama2x2 = 
                 ojamaBlocks.has(`${y},${x}`) ||
@@ -577,30 +634,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             })}
           </div>
         ))}
-        
-        {/* 初期画面: ボード中央に大きなojama-block.pngを表示 */}
-        {!gameStarted && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: `${scaledInner * 6}px`,
-              height: `${scaledInner * 6}px`,
-              zIndex: 20,
-              pointerEvents: 'none'
-            }}
-          >
-            <Image
-              src="/ojama-block.png"
-              alt="Ojama Block"
-              fill
-              style={{ objectFit: 'contain' }}
-              unoptimized
-            />
-          </div>
-        )}
       </div>
     );
   };
@@ -655,6 +688,27 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     );
   };
 
+  // メニュー画面を表示
+  if (showMenu) {
+    return (
+      <>
+        <GameMenu
+          onStartGame={startNewGame}
+          onShowHistory={handleShowHistory}
+          onShowRanking={handleShowRanking}
+          username={user?.username}
+          pfpUrl={user?.pfpUrl}
+        />
+        <LeaderboardModal
+          isOpen={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+          currentUserFid={user?.fid}
+        />
+      </>
+    );
+  }
+
+  // ゲーム画面
   return (
     <div
       className="flex flex-col w-full min-h-[100dvh] bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800 overflow-x-hidden"
@@ -699,17 +753,30 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                 <div className="text-center">
                   <p className="text-3xl font-bold text-red-500 mb-4">GAME OVER</p>
                   <p className="text-xl text-white mb-4">Score: {score}</p>
-                  <button
-                    onClick={resetGame}
-                    className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
-                    style={{
-                      userSelect: 'none',
-                      WebkitUserSelect: 'none',
-                      WebkitTouchCallout: 'none'
-                    }}
-                  >
-                    RETRY
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={startNewGame}
+                      className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
+                      style={{
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        WebkitTouchCallout: 'none'
+                      }}
+                    >
+                      RETRY
+                    </button>
+                    <button
+                      onClick={handleBackToMenu}
+                      className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+                      style={{
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
+                        WebkitTouchCallout: 'none'
+                      }}
+                    >
+                      MENU
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -737,31 +804,28 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             </div>
 
             <div className="space-y-1">
-              {!gameStarted ? (
-                <button
-                  onClick={resetGame}
-                  className="w-full py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition-colors"
-                  style={{
-                    userSelect: 'none',
-                    WebkitUserSelect: 'none',
-                    WebkitTouchCallout: 'none'
-                  }}
-                >
-                  START
-                </button>
-              ) : (
-                <button
-                  onClick={togglePause}
-                  className="w-full py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
-                  style={{
-                    userSelect: 'none',
-                    WebkitUserSelect: 'none',
-                    WebkitTouchCallout: 'none'
-                  }}
-                >
-                  {isPaused ? 'RESTART' : 'PAUSE'}
-                </button>
-              )}
+              <button
+                onClick={togglePause}
+                className="w-full py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                style={{
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  WebkitTouchCallout: 'none'
+                }}
+              >
+                {isPaused ? 'RESUME' : 'PAUSE'}
+              </button>
+              <button
+                onClick={handleBackToMenu}
+                className="w-full py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                style={{
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  WebkitTouchCallout: 'none'
+                }}
+              >
+                MENU
+              </button>
             </div>
           </div>
         </div>
@@ -880,6 +944,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           </button>
         </div>
       </div>
+
+      <LeaderboardModal
+        isOpen={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+        currentUserFid={user?.fid}
+      />
     </div>
   );
 };
