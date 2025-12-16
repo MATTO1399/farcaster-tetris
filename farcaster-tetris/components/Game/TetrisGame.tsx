@@ -85,9 +85,20 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const [controlsHeight, setControlsHeight] = useState(0);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isAndroid = /Android/.test(navigator.userAgent);
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+  const getPaddingBottom = () => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    if (isIOS && isSafari) {
+      return `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 30px)`;
+    } else if (isAndroid) {
+      return `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 10px)`;
+    } else {
+      return `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 20px)`;
+    }
+  };
 
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
@@ -759,11 +770,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         className="flex-1 w-full flex flex-col items-center"
         style={{
            paddingTop: '30px',
-           paddingBottom: isIOS && isSafari 
-             ? `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 30px)`
-             : isAndroid
-             ? `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 10px)`
-             : `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 20px)`,
+           paddingBottom: getPaddingBottom(),
         }}
       >
         <div className="text-center mb-4">
