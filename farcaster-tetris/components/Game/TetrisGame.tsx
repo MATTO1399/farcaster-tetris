@@ -755,10 +755,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                       RETRY
                     </button>
                     <button
-                      onClick={() => {
-                        setGameStarted(false);
-                        setGameOver(false);
-                      }}
+                      onClick={handleBackToMenu}
                       className="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-full transition-colors"
                     >
                       MENU
