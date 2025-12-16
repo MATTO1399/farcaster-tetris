@@ -312,7 +312,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     (isInFarcaster && viewport.w <= 450 && viewport.ratio >= 1.90);
 
   const androidPushPx = shouldTweakAndroidSpacing
-    ? Math.round(clamp((viewport.h - 680) * 0.6, 16, 74))
+    ? Math.round(clamp((viewport.h - 680) * 0.7, 16, 74))
     : 0;
 
   useEffect(() => {
