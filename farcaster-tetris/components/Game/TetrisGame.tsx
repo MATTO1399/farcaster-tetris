@@ -701,7 +701,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           pfpUrl={user?.pfpUrl}
         />
         <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} currentUserFid={user?.fid} />
-        <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} userFid={user?.fid} />
+        <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserFid={user?.fid} />
       </>
     );
   }
@@ -881,7 +881,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       </div>
 
       <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} currentUserFid={user?.fid} />
-      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} userFid={user?.fid} />
+      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserFid={user?.fid} />
     </div>
   );
 };
