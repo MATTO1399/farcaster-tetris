@@ -177,21 +177,41 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [user, setUser] = useState<FarcasterUser | null>(null);
+
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ★ Android判定（Androidだけ詰める）
-  const [isAndroid, setIsAndroid] = useState(false);
+  // ===== Platform / viewport helpers =====
+  const [platform, setPlatform] = useState<'android' | 'ios' | 'web' | 'unknown'>('unknown');
+  const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
+
   useEffect(() => {
-    setIsAndroid(/Android/i.test(navigator.userAgent));
+    const ua = navigator.userAgent || '';
+    const uaAndroid = /Android/i.test(ua);
+    if (uaAndroid) setPlatform('android'); // fallback（context取れない場合）
+
+    // Farcaster context からも取る（取れれば優先）
+    (async () => {
+      try {
+        const ctx: any = await sdk.context;
+        const p = (ctx?.client?.platform || ctx?.platform || '').toString().toLowerCase();
+        if (p.includes('android')) setPlatform('android');
+        else if (p.includes('ios')) setPlatform('ios');
+        else if (p) setPlatform('web');
+      } catch {
+        // ignore
+      }
+    })();
   }, []);
 
-  // ★ Android(WebView)だけ：実表示高さをCSS変数に入れる（100dvhがズレる対策）
+  // WebViewで100dvhが怪しいので、visualViewportから実高さをCSS変数に入れる（全端末で実行）
   useEffect(() => {
-    if (!isAndroid) return;
-
     const setAppHeight = () => {
       const h = window.visualViewport?.height ?? window.innerHeight;
       document.documentElement.style.setProperty('--app-height', `${h}px`);
+
+      const w = window.innerWidth;
+      const ratio = w ? h / w : 0;
+      setViewport({ w, h, ratio });
     };
 
     setAppHeight();
@@ -206,8 +226,15 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       window.removeEventListener('resize', setAppHeight);
       window.removeEventListener('orientationchange', setAppHeight);
     };
-  }, [isAndroid]);
+  }, []);
 
+  const isAndroid = platform === 'android' || /Android/i.test(navigator.userAgent || '');
+
+  // ★ ここが今回の肝：Androidかつ縦長なら、ボードを下に寄せる
+  // Seekerみたいな縦長想定で閾値は2.0前後が効きやすい
+  const shouldPushBoardDown = isAndroid && viewport.ratio >= 2.0;
+
+  // ===== layout config =====
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
     sidePanelWidth: 85,
@@ -261,6 +288,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
+  // ===== Farcaster init =====
   useEffect(() => {
     const initFarcaster = async () => {
       try {
@@ -281,6 +309,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
+  // ===== game loop =====
   useEffect(() => {
     if (gameOver || isPaused || !gameStarted || !currentPiece) {
       if (gameLoopRef.current) {
@@ -671,13 +700,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                         zIndex: 10,
                       }}
                     >
-                      <Image
-                        src="/ojama-block.png"
-                        alt="Ojama Block"
-                        fill
-                        style={{ objectFit: 'cover' }}
-                        unoptimized
-                      />
+                      <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
                     </div>
                   )}
                 </div>
@@ -715,16 +738,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           ))}
 
           {isOjamaNext && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '-1px',
-                left: '-1px',
-                width: '32px',
-                height: '32px',
-                pointerEvents: 'none',
-              }}
-            >
+            <div style={{ position: 'absolute', top: '-1px', left: '-1px', width: '32px', height: '32px', pointerEvents: 'none' }}>
               <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
             </div>
           )}
@@ -753,8 +767,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     <div
       className="flex flex-col w-full overflow-hidden bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
       style={{
-        // ★ Androidだけ実測高さ、それ以外は100dvh
-        height: isAndroid ? 'var(--app-height)' : '100dvh',
+        // ★ 100dvhより安定（WebView含む）
+        height: 'var(--app-height, 100dvh)',
         paddingTop: 'env(safe-area-inset-top)',
         userSelect: 'none',
         WebkitUserSelect: 'none',
@@ -763,11 +777,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     >
       {/* Main */}
       <div
-        className={[
-          'flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center',
-          // ★ Androidだけ：余った縦スペースを上側に吸わせてゲームを下へ寄せる
-          isAndroid ? 'justify-between' : '',
-        ].join(' ')}
+        className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center"
         style={{
           paddingTop: `${layoutConfig.paddingTop}px`,
           paddingBottom: '12px',
@@ -777,12 +787,17 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
         </div>
 
+        {/* ★ Android縦長だけ：ここで余白を吸わせて、ゲーム本体を下に寄せる */}
+        {shouldPushBoardDown ? <div style={{ flex: 1 }} /> : null}
+
         <div
           className="flex items-center justify-center w-full max-w-md"
           style={{
             gap: '5px',
             paddingLeft: `${layoutConfig.paddingX}px`,
             paddingRight: `${layoutConfig.paddingX}px`,
+            // もう一段確実に下へ寄せたい場合（Android縦長だけ）
+            marginTop: shouldPushBoardDown ? 'auto' : undefined,
           }}
         >
           <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
