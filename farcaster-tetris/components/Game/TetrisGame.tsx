@@ -799,7 +799,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
             <button
               onClick={togglePause}
-              className="w-full py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
+              className="w-full py-1.5 bg-red-600 hover:bg-yellow-700 text-white rounded-lg text-xs font-semibold transition-colors"
               style={{
                 userSelect: 'none',
                 WebkitUserSelect: 'none',

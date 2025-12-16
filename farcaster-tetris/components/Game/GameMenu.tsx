@@ -70,7 +70,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
       </h1>
       
       <p className="text-white text-center mb-12 text-lg">
-        Stack & Clear!
+        ～Eternal Tetris～
       </p>
 
       {/* メインボタン */}
@@ -85,7 +85,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
       <div className="flex gap-4 w-full max-w-sm">
         <button
           onClick={onShowHistory}
-          className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-full transition-colors flex items-center justify-center gap-2"
+          className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-full transition-colors flex items-center justify-center gap-2"
         >
           <span>🕐</span>
           <span>HISTORY</span>
