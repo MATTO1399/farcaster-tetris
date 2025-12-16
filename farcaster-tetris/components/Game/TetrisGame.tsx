@@ -86,20 +86,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const [controlsHeight, setControlsHeight] = useState(0);
 
-  const getPaddingBottom = () => {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isAndroid = /Android/.test(navigator.userAgent);
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    
-    if (isIOS && isSafari) {
-      return `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 30px)`;
-    } else if (isAndroid) {
-      return `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 10px)`;
-    } else {
-      return `calc(${controlsHeight}px + env(safe-area-inset-bottom) + 20px)`;
-    }
-  };
-
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
     sidePanelWidth: 85,
@@ -113,17 +99,26 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     if (!el) return;
 
     const update = () => {
-      const height = el.getBoundingClientRect().height;
-      setControlsHeight(height || 180);
+      setControlsHeight(el.offsetHeight || 0);
     };
-    
-    setTimeout(update, 100);
+
     update();
 
     const ro = new ResizeObserver(update);
     ro.observe(el);
 
-    return () => ro.disconnect();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
+
+    window.addEventListener('orientationchange', update);
+
+    return () => {
+      ro.disconnect();
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+      window.removeEventListener('orientationchange', update);
+    };
   }, []);
 
   useEffect(() => {
@@ -770,7 +765,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         className="flex-1 w-full flex flex-col items-center"
         style={{
            paddingTop: '30px',
-           paddingBottom: getPaddingBottom(),
+           paddingBottom: `${controlsHeight}px`,
         }}
       >
         <div className="text-center mb-4">
