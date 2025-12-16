@@ -43,6 +43,8 @@ interface FarcasterUser {
 
 type RotationState = 0 | 1 | 2 | 3;
 
+const DEBUG_OVERLAY = true; // ← 確認が終わったら false にしてOK
+
 const SRS_KICK_TABLE: Record<string, Position[]> = {
   '0->1': [
     { x: 0, y: 0 },
@@ -177,33 +179,35 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [user, setUser] = useState<FarcasterUser | null>(null);
-
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ===== Platform / viewport helpers =====
+  // ---- Platform / viewport（Android縦長だけ“詰める”ため） ----
   const [platform, setPlatform] = useState<'android' | 'ios' | 'web' | 'unknown'>('unknown');
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
     const uaAndroid = /Android/i.test(ua);
-    if (uaAndroid) setPlatform('android'); // fallback（context取れない場合）
+    const uaIOS = /iPad|iPhone|iPod/i.test(ua);
 
-    // Farcaster context からも取る（取れれば優先）
+    if (uaAndroid) setPlatform('android');
+    else if (uaIOS) setPlatform('ios');
+    else setPlatform('web');
+
+    // Farcaster context が取れれば上書き（取れなくてもOK）
     (async () => {
       try {
         const ctx: any = await sdk.context;
         const p = (ctx?.client?.platform || ctx?.platform || '').toString().toLowerCase();
         if (p.includes('android')) setPlatform('android');
         else if (p.includes('ios')) setPlatform('ios');
-        else if (p) setPlatform('web');
       } catch {
         // ignore
       }
     })();
   }, []);
 
-  // WebViewで100dvhが怪しいので、visualViewportから実高さをCSS変数に入れる（全端末で実行）
+  // WebViewで100dvhがズレるので、visualViewportから実高さをCSS変数に入れる（全端末で実行）
   useEffect(() => {
     const setAppHeight = () => {
       const h = window.visualViewport?.height ?? window.innerHeight;
@@ -228,13 +232,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
   }, []);
 
-  const isAndroid = platform === 'android' || /Android/i.test(navigator.userAgent || '');
+  const uaAndroid = /Android/i.test(navigator.userAgent || '');
+  const isAndroid = platform === 'android' || uaAndroid;
 
-  // ★ ここが今回の肝：Androidかつ縦長なら、ボードを下に寄せる
-  // Seekerみたいな縦長想定で閾値は2.0前後が効きやすい
+  // ★ Android縦長端末だけ：ボードを下に寄せる（間が広すぎ対策）
   const shouldPushBoardDown = isAndroid && viewport.ratio >= 2.0;
 
-  // ===== layout config =====
+  // ---- Layout config ----
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
     sidePanelWidth: 85,
@@ -288,7 +292,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
-  // ===== Farcaster init =====
+  // ---- Farcaster init ----
   useEffect(() => {
     const initFarcaster = async () => {
       try {
@@ -309,7 +313,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     initFarcaster();
   }, []);
 
-  // ===== game loop =====
+  // ---- Game loop ----
   useEffect(() => {
     if (gameOver || isPaused || !gameStarted || !currentPiece) {
       if (gameLoopRef.current) {
@@ -767,7 +771,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     <div
       className="flex flex-col w-full overflow-hidden bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
       style={{
-        // ★ 100dvhより安定（WebView含む）
         height: 'var(--app-height, 100dvh)',
         paddingTop: 'env(safe-area-inset-top)',
         userSelect: 'none',
@@ -775,7 +778,29 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         WebkitTouchCallout: 'none',
       }}
     >
-      {/* Main */}
+      {DEBUG_OVERLAY && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            zIndex: 9999,
+            fontSize: 12,
+            background: '#000',
+            color: '#0f0',
+            padding: 6,
+            lineHeight: 1.2,
+          }}
+        >
+          platform={platform} uaAndroid={String(uaAndroid)}
+          <br />
+          ratio={viewport.ratio.toFixed(2)} h={viewport.h} w={viewport.w}
+          <br />
+          shouldPushBoardDown={String(shouldPushBoardDown)}
+        </div>
+      )}
+
+      {/* Main (scroll area) */}
       <div
         className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center"
         style={{
@@ -787,7 +812,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
         </div>
 
-        {/* ★ Android縦長だけ：ここで余白を吸わせて、ゲーム本体を下に寄せる */}
+        {/* ★ Android縦長だけ：余った縦スペースをここで吸わせてゲームを下に寄せる */}
         {shouldPushBoardDown ? <div style={{ flex: 1 }} /> : null}
 
         <div
@@ -796,7 +821,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             gap: '5px',
             paddingLeft: `${layoutConfig.paddingX}px`,
             paddingRight: `${layoutConfig.paddingX}px`,
-            // もう一段確実に下へ寄せたい場合（Android縦長だけ）
             marginTop: shouldPushBoardDown ? 'auto' : undefined,
           }}
         >
