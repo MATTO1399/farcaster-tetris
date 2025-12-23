@@ -618,7 +618,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [gameStarted, gameOver, isPaused, moveLeft, moveRight, moveDown, rotate, rotateCounterClockwise, hardDrop]);
 
   const startNewGame = () => {
-    const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3'];
+    const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3', '/sounds/music_C.mp3'];
     const randomBGM = bgmList[Math.floor(Math.random() * bgmList.length)];
     
     if (bgmAudioRef.current) {
