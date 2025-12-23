@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { createBoard, clearLines } from '@/utils/board';
+import { createBoard } from '@/utils/board';
 import { getRandomTetromino, rotateTetromino, counterRotateTetromino } from '@/utils/tetromino';
 import { isValidMove, mergePieceToBoard } from '@/utils/collision';
+import { clearLines } from '@/utils/board';
 import type {
   Board,
   Tetromino,
@@ -26,6 +27,22 @@ type LayoutConfig = {
   gap: number;
   fontSize: number;
 };
+
+interface TetrisGameProps {
+  onGameOver?: (score: number) => void;
+}
+
+function getUADataPlatform() {
+  const nav: any = typeof navigator !== 'undefined' ? navigator : null;
+  const p = nav?.userAgentData?.platform ?? nav?.platform ?? '';
+  return p.toLowerCase();
+}
+
+function isAndroidLike() {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const plat = getUADataPlatform();
+  return /android/i.test(ua) || /android/i.test(plat);
+}
 
 const DEBUG_OVERLAY = false;
 
@@ -147,22 +164,6 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   ],
 };
 
-interface TetrisGameProps {
-  onGameOver?: (score: number) => void;
-}
-
-function getUADataPlatform() {
-  const nav: any = typeof navigator !== 'undefined' ? navigator : null;
-  const p = nav?.userAgentData?.platform ?? nav?.platform ?? '';
-  return p.toLowerCase();
-}
-
-function isAndroidLike() {
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  const plat = getUADataPlatform();
-  return /android/i.test(ua) || /android/i.test(plat);
-}
-
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
@@ -180,8 +181,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // BGM用のRefを追加
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const [isInFarcaster, setIsInFarcaster] = useState(false);
@@ -295,6 +294,15 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     : 0;
 
   useEffect(() => {
+    return () => {
+      if (gameLoopRef.current) {
+        clearInterval(gameLoopRef.current);
+        gameLoopRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!gameStarted || gameOver || isPaused || !currentPiece) return;
 
     const speed = Math.max(100, 1000 - (level - 1) * 50);
@@ -304,9 +312,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }, speed);
 
     return () => {
-      if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
-      }
+      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
     };
   }, [gameStarted, gameOver, isPaused, currentPiece, level, position, board]);
 
