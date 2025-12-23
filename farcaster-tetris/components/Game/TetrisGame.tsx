@@ -1,49 +1,33 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import sdk from '@farcaster/frame-sdk';
-import Image from 'next/image';
-import {
-  createBoard,
-  getRandomTetromino,
-  rotateTetromino,
-  checkCollision,
-  mergeTetromino,
-  clearLines,
-  calculateScore,
-  getTetrominoColor,
-} from '@/utils/tetrisLogic';
-import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
-import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
-import type { LeaderboardEntry } from '@/lib/leaderboard';
-import type { HistoryEntry } from '@/lib/history';
+import { createBoard, clearLines } from '@/utils/board';
+import { getRandomTetromino, rotateTetromino, counterRotateTetromino } from '@/utils/tetromino';
+import { isValidMove, mergePieceToBoard } from '@/utils/collision';
+import type {
+  Board,
+  Tetromino,
+  Position,
+  RotationState,
+  FarcasterUser,
+  LeaderboardEntry,
+  HistoryEntry,
+} from '@/types/tetris';
 import GameMenu from './GameMenu';
-import LeaderboardModal from './LeaderboardModal';
+import Leaderboard from './Leaderboard';
 import HistoryModal from './HistoryModal';
+import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
 
-interface TetrisGameProps {
-  onGameOver?: (score: number) => void;
-}
+declare const sdk: any;
 
-interface LayoutConfig {
+type LayoutConfig = {
   boardScale: number;
-  sidePanelWidth: number;
   buttonSize: number;
   gap: number;
-  paddingX: number;
-  paddingTop: number;
-}
+  fontSize: number;
+};
 
-interface FarcasterUser {
-  fid: number;
-  username: string;
-  displayName: string;
-  pfpUrl: string;
-}
-
-type RotationState = 0 | 1 | 2 | 3;
-
-const DEBUG_OVERLAY = false; // 確認できたら false に
+const DEBUG_OVERLAY = false;
 
 const SRS_KICK_TABLE: Record<string, Position[]> = {
   '0->1': [
@@ -90,17 +74,17 @@ const SRS_KICK_TABLE: Record<string, Position[]> = {
   ],
   '3->0': [
     { x: 0, y: 0 },
-    { x: 1, y: 0 },
-    { x: 1, y: 1 },
-    { x: 0, y: -2 },
-    { x: 1, y: 2 },
-  ],
-  '0->3': [
-    { x: 0, y: 0 },
     { x: -1, y: 0 },
     { x: -1, y: -1 },
     { x: 0, y: 2 },
     { x: -1, y: 2 },
+  ],
+  '0->3': [
+    { x: 0, y: 0 },
+    { x: 1, y: 0 },
+    { x: 1, y: 1 },
+    { x: 0, y: -2 },
+    { x: 1, y: -2 },
   ],
 };
 
@@ -163,20 +147,20 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
   ],
 };
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
+interface TetrisGameProps {
+  onGameOver?: (score: number) => void;
 }
 
-function getUADataPlatform(): string {
+function getUADataPlatform() {
   const nav: any = typeof navigator !== 'undefined' ? navigator : null;
   const p = nav?.userAgentData?.platform ?? nav?.platform ?? '';
-  return String(p || '');
+  return p.toLowerCase();
 }
 
-function isAndroidLike(): boolean {
+function isAndroidLike() {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
   const plat = getUADataPlatform();
-  return /Android/i.test(ua) || /Android/i.test(plat);
+  return /android/i.test(ua) || /android/i.test(plat);
 }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
@@ -196,6 +180,9 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [user, setUser] = useState<FarcasterUser | null>(null);
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // BGM用のRefを追加
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const [isInFarcaster, setIsInFarcaster] = useState(false);
   const [androidLike, setAndroidLike] = useState(false);
@@ -216,26 +203,22 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
 
     setAppHeight();
-    window.visualViewport?.addEventListener('resize', setAppHeight);
-    window.visualViewport?.addEventListener('scroll', setAppHeight);
-    window.addEventListener('resize', setAppHeight);
-    window.addEventListener('orientationchange', setAppHeight);
-
-    return () => {
-      window.visualViewport?.removeEventListener('resize', setAppHeight);
-      window.visualViewport?.removeEventListener('scroll', setAppHeight);
-      window.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('orientationchange', setAppHeight);
-    };
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', setAppHeight);
+      return () => {
+        window.visualViewport?.removeEventListener('resize', setAppHeight);
+      };
+    } else {
+      window.addEventListener('resize', setAppHeight);
+      return () => window.removeEventListener('resize', setAppHeight);
+    }
   }, []);
 
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
-    boardScale: 0.72,
-    sidePanelWidth: 85,
-    buttonSize: 56,
-    gap: 5,
-    paddingX: 12,
-    paddingTop: 30,
+    boardScale: 1.0,
+    buttonSize: 64,
+    gap: 12,
+    fontSize: 16,
   });
 
   useEffect(() => {
@@ -244,38 +227,34 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       const height = window.innerHeight;
       const aspectRatio = height / width;
 
-      let config: LayoutConfig;
+      let boardScale = 1.0;
+      let buttonSize = 64;
+      let gap = 12;
+      let fontSize = 16;
 
-      if (width <= 375) {
-        if (aspectRatio > 2.0) {
-          config = { boardScale: 0.68, sidePanelWidth: 80, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
-        } else {
-          config = { boardScale: 0.65, sidePanelWidth: 80, buttonSize: 50, gap: 5, paddingX: 8, paddingTop: 20 };
-        }
-      } else if (width <= 390) {
-        config = { boardScale: 0.7, sidePanelWidth: 85, buttonSize: 54, gap: 5, paddingX: 10, paddingTop: 25 };
-      } else if (width <= 414) {
-        config = { boardScale: 0.75, sidePanelWidth: 90, buttonSize: 56, gap: 5, paddingX: 12, paddingTop: 30 };
-      } else if (width <= 768) {
-        if (aspectRatio < 1.0) {
-          config = { boardScale: 0.6, sidePanelWidth: 95, buttonSize: 60, gap: 5, paddingX: 16, paddingTop: 20 };
-        } else {
-          config = { boardScale: 0.85, sidePanelWidth: 100, buttonSize: 64, gap: 5, paddingX: 16, paddingTop: 30 };
-        }
-      } else {
-        config = { boardScale: 0.9, sidePanelWidth: 110, buttonSize: 68, gap: 5, paddingX: 20, paddingTop: 30 };
+      if (aspectRatio > 2.0) {
+        boardScale = 1.2;
+        buttonSize = 72;
+        gap = 14;
+        fontSize = 18;
+      } else if (aspectRatio > 1.8) {
+        boardScale = 1.1;
+        buttonSize = 68;
+        gap = 13;
+        fontSize = 17;
+      } else if (aspectRatio < 1.4) {
+        boardScale = 0.85;
+        buttonSize = 56;
+        gap = 10;
+        fontSize = 14;
       }
 
-      setLayoutConfig(config);
+      setLayoutConfig({ boardScale, buttonSize, gap, fontSize });
     };
 
     calculateLayout();
     window.addEventListener('resize', calculateLayout);
-    window.addEventListener('orientationchange', calculateLayout);
-    return () => {
-      window.removeEventListener('resize', calculateLayout);
-      window.removeEventListener('orientationchange', calculateLayout);
-    };
+    return () => window.removeEventListener('resize', calculateLayout);
   }, []);
 
   const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);
@@ -287,67 +266,59 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       try {
         const context = await sdk.context;
         setIsInFarcaster(true);
-        setAndroidLike(isAndroidLike());
-
-        if (context.user) {
+        if (context?.user) {
           setUser({
             fid: context.user.fid,
-            username: context.user.username || `user${context.user.fid}`,
-            displayName: context.user.displayName || context.user.username || `User ${context.user.fid}`,
-            pfpUrl: context.user.pfpUrl || '',
+            username: context.user.username || `User${context.user.fid}`,
+            displayName: context.user.displayName || context.user.username || `User${context.user.fid}`,
+            pfpUrl: context.user.pfpUrl || undefined,
           });
         }
-
-        sdk.actions.ready();
       } catch (error) {
-        console.error('Farcaster SDK error:', error);
+        console.error('Farcaster initialization error:', error);
+        setIsInFarcaster(false);
       }
     };
-    initFarcaster();
+
+    if (typeof window !== 'undefined' && typeof sdk !== 'undefined') {
+      initFarcaster();
+    }
   }, []);
 
-  // Android(Farcaster)縦長だけ “少しだけ” 下げる（下げすぎ防止）
   const shouldTweakAndroidSpacing =
-    (androidLike && viewport.w <= 450 && viewport.ratio >= 1.85) ||
-    (isInFarcaster && viewport.w <= 450 && viewport.ratio >= 1.90);
+    isInFarcaster &&
+    androidLike &&
+    viewport.ratio >= 1.6;
 
   const androidPushPx = shouldTweakAndroidSpacing
-    ? Math.round(clamp((viewport.h - 680) * 0.7, 16, 74))
+    ? Math.floor((viewport.h * 0.08) / layoutConfig.boardScale)
     : 0;
 
   useEffect(() => {
-    if (gameOver || isPaused || !gameStarted || !currentPiece) {
-      if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
-        gameLoopRef.current = null;
-      }
-      return;
-    }
+    if (!gameStarted || gameOver || isPaused || !currentPiece) return;
 
-    let speed = level === 1 ? 500 : 500 / Math.pow(1.1, level - 1);
-    speed = Math.max(50, speed);
+    const speed = Math.max(100, 1000 - (level - 1) * 50);
 
     gameLoopRef.current = setInterval(() => {
-      setPosition((prev) => ({ x: prev.x, y: prev.y + 1 }));
+      moveDown();
     }, speed);
 
     return () => {
-      if (gameLoopRef.current) clearInterval(gameLoopRef.current);
+      if (gameLoopRef.current) {
+        clearInterval(gameLoopRef.current);
+      }
     };
-  }, [gameOver, isPaused, level, gameStarted, currentPiece]);
+  }, [gameStarted, gameOver, isPaused, currentPiece, level, position, board]);
 
   const saveScoreToLeaderboard = async (finalScore: number) => {
-    if (!user) return;
-
+    if (!user || !isInFarcaster) return;
     try {
       const entry: LeaderboardEntry = {
         fid: user.fid,
         username: user.username,
-        displayName: user.displayName,
+        displayName: user.displayName || user.username,
         pfpUrl: user.pfpUrl,
         score: finalScore,
-        level,
-        lines,
         timestamp: Date.now(),
       };
 
@@ -357,22 +328,19 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         body: JSON.stringify(entry),
       });
     } catch (error) {
-      console.error('Failed to save score:', error);
+      console.error('Failed to save to leaderboard:', error);
     }
   };
 
   const saveScoreToHistory = async (finalScore: number) => {
-    if (!user) return;
-
+    if (!user || !isInFarcaster) return;
     try {
       const entry: HistoryEntry = {
         fid: user.fid,
         username: user.username,
-        displayName: user.displayName,
+        displayName: user.displayName || user.username,
         pfpUrl: user.pfpUrl,
         score: finalScore,
-        level,
-        lines,
         timestamp: Date.now(),
       };
 
@@ -382,96 +350,101 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         body: JSON.stringify(entry),
       });
     } catch (error) {
-      console.error('Failed to save history:', error);
+      console.error('Failed to save to history:', error);
     }
   };
 
   const lockPiece = useCallback(
     (lockPosition: Position) => {
-      if (!currentPiece || !nextPiece) return;
+      if (!currentPiece) return;
 
       const pieceToMerge = { ...currentPiece, position: lockPosition };
-      let newBoard = mergeTetromino(board, pieceToMerge);
-      let newScore = score;
+      let newBoard = mergePieceToBoard(board, pieceToMerge);
 
       if (currentPiece.isOjama) {
-        let blockCount = 0;
-        for (let y = 0; y < BOARD_HEIGHT; y++) {
-          for (let x = 0; x < BOARD_WIDTH; x++) {
-            if (newBoard[y][x] !== null) blockCount++;
-          }
-        }
         newBoard = createBoard();
+      }
+
+      let newScore = score;
+      if (currentPiece.isOjama) {
+        const blockCount = currentPiece.shape.flat().filter((cell) => cell !== 0).length;
         const bonusScore = blockCount * 10;
-        newScore = score + bonusScore;
-        setScore(newScore);
+        newScore += bonusScore;
       } else {
         const { board: clearedBoard, linesCleared } = clearLines(newBoard);
         newBoard = clearedBoard;
-
-        setLines((prev) => prev + linesCleared);
-        newScore = score + calculateScore(linesCleared, level);
-        setScore(newScore);
+        if (linesCleared > 0) {
+          const basePoints = [0, 100, 300, 500, 800];
+          newScore += basePoints[linesCleared] * level;
+          setLines((prev) => prev + linesCleared);
+        }
       }
 
       const newLevel = Math.floor(newScore / 1000) + 1;
-      if (newLevel > level) setLevel(newLevel);
-
+      setScore(newScore);
+      setLevel(newLevel);
       setBoard(newBoard);
 
       const newPiece = nextPiece;
       const newNext = getRandomTetromino();
-
-      if (checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
-        setGameOver(true);
-        saveScoreToLeaderboard(newScore);
-        saveScoreToHistory(newScore);
-        onGameOver?.(newScore);
-        return;
-      }
-
       setCurrentPiece(newPiece);
       setNextPiece(newNext);
       setPosition({ x: 3, y: 0 });
       setRotationState(0);
+
+      if (newPiece && !isValidMove(newBoard, { ...newPiece, position: { x: 3, y: 0 } })) {
+        setGameOver(true);
+        setGameStarted(false);
+        saveScoreToLeaderboard(newScore);
+        saveScoreToHistory(newScore);
+        
+        // BGM停止
+        if (bgmAudioRef.current) {
+          bgmAudioRef.current.pause();
+          bgmAudioRef.current.currentTime = 0;
+        }
+        
+        if (onGameOver) {
+          onGameOver(newScore);
+        }
+      }
     },
-    [board, currentPiece, nextPiece, level, score, lines, onGameOver, user]
+    [currentPiece, nextPiece, board, score, level, onGameOver]
   );
 
   useEffect(() => {
-    if (!gameStarted || gameOver || isPaused || !currentPiece) return;
-
+    if (!currentPiece || !gameStarted || gameOver || isPaused) return;
     const pieceWithPosition = { ...currentPiece, position };
-    if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) {
+    if (!isValidMove(board, pieceWithPosition)) {
       const prevPosition = { x: position.x, y: position.y - 1 };
       lockPiece(prevPosition);
     }
-  }, [position, board, currentPiece, gameStarted, gameOver, isPaused, lockPiece]);
+  }, [position, currentPiece, board, gameStarted, gameOver, isPaused, lockPiece]);
 
   const moveLeft = useCallback(() => {
-    if (isPaused || !currentPiece) return;
+    if (!currentPiece) return;
     const newPosition = { x: position.x - 1, y: position.y };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
-    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) setPosition(newPosition);
-  }, [board, currentPiece, position, isPaused]);
+    if (isValidMove(board, pieceWithPosition)) setPosition(newPosition);
+  }, [currentPiece, position, board]);
 
   const moveRight = useCallback(() => {
-    if (isPaused || !currentPiece) return;
+    if (!currentPiece) return;
     const newPosition = { x: position.x + 1, y: position.y };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
-    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) setPosition(newPosition);
-  }, [board, currentPiece, position, isPaused]);
+    if (isValidMove(board, pieceWithPosition)) setPosition(newPosition);
+  }, [currentPiece, position, board]);
 
   const moveDown = useCallback(() => {
-    if (isPaused || !currentPiece) return;
+    if (!currentPiece) return;
     const newPosition = { x: position.x, y: position.y + 1 };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
-    if (!checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) setPosition(newPosition);
-  }, [board, currentPiece, position, isPaused]);
+    if (isValidMove(board, pieceWithPosition)) setPosition(newPosition);
+  }, [currentPiece, position, board]);
 
   const rotate = useCallback(() => {
-    if (isPaused || !currentPiece || currentPiece.isOjama) return;
-
+    if (!currentPiece) return;
+    if (currentPiece.isOjama) return;
     const isIPiece = currentPiece.type === 'I';
     const kickTable = isIPiece ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
     const newRotationState = ((rotationState + 1) % 4) as RotationState;
@@ -483,121 +456,114 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     for (const kick of kicks) {
       const testPosition = { x: position.x + kick.x, y: position.y + kick.y };
       const testPiece = { ...rotated, position: testPosition };
-      if (!checkCollision(board, testPiece, { x: 0, y: 0 })) {
+      if (isValidMove(board, testPiece)) {
         setCurrentPiece(rotated);
         setPosition(testPosition);
         setRotationState(newRotationState);
         return;
       }
     }
-  }, [board, position, currentPiece, rotationState, isPaused]);
+  }, [currentPiece, position, rotationState, board]);
 
   const rotateCounterClockwise = useCallback(() => {
-    if (isPaused || !currentPiece || currentPiece.isOjama) return;
-
+    if (!currentPiece) return;
+    if (currentPiece.isOjama) return;
     const isIPiece = currentPiece.type === 'I';
     const kickTable = isIPiece ? SRS_I_KICK_TABLE : SRS_KICK_TABLE;
     const newRotationState = ((rotationState + 3) % 4) as RotationState;
     const transitionKey = `${rotationState}->${newRotationState}`;
     const kicks = kickTable[transitionKey] || [{ x: 0, y: 0 }];
 
-    let rotated = currentPiece;
-    for (let i = 0; i < 3; i++) rotated = rotateTetromino(rotated);
+    const rotated = counterRotateTetromino(currentPiece);
 
     for (const kick of kicks) {
       const testPosition = { x: position.x + kick.x, y: position.y + kick.y };
       const testPiece = { ...rotated, position: testPosition };
-      if (!checkCollision(board, testPiece, { x: 0, y: 0 })) {
+      if (isValidMove(board, testPiece)) {
         setCurrentPiece(rotated);
         setPosition(testPosition);
         setRotationState(newRotationState);
         return;
       }
     }
-  }, [board, position, currentPiece, rotationState, isPaused]);
+  }, [currentPiece, position, rotationState, board]);
 
   const hardDrop = useCallback(() => {
-    if (isPaused || !currentPiece) return;
+    if (!currentPiece) return;
 
     let dropPosition = { ...position };
     while (true) {
       const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
       const pieceWithPosition = { ...currentPiece, position: nextPos };
-      if (checkCollision(board, pieceWithPosition, { x: 0, y: 0 })) break;
+      if (!isValidMove(board, pieceWithPosition)) break;
       dropPosition = nextPos;
     }
 
     const pieceToMerge = { ...currentPiece, position: dropPosition };
-    let newBoard = mergeTetromino(board, pieceToMerge);
-    let newScore = score;
+    let newBoard = mergePieceToBoard(board, pieceToMerge);
 
     if (currentPiece.isOjama) {
-      let blockCount = 0;
-      for (let y = 0; y < BOARD_HEIGHT; y++) {
-        for (let x = 0; x < BOARD_WIDTH; x++) {
-          if (newBoard[y][x] !== null) blockCount++;
-        }
-      }
       newBoard = createBoard();
+    }
+
+    let newScore = score;
+    if (currentPiece.isOjama) {
+      const blockCount = currentPiece.shape.flat().filter((cell) => cell !== 0).length;
       const bonusScore = blockCount * 10;
-      newScore = score + bonusScore;
-      setScore(newScore);
+      newScore += bonusScore;
     } else {
       const { board: clearedBoard, linesCleared } = clearLines(newBoard);
       newBoard = clearedBoard;
-
-      setLines((prev) => prev + linesCleared);
-      newScore = score + calculateScore(linesCleared, level);
-      setScore(newScore);
+      if (linesCleared > 0) {
+        const basePoints = [0, 100, 300, 500, 800];
+        newScore += basePoints[linesCleared] * level;
+        setLines((prev) => prev + linesCleared);
+      }
     }
 
     const newLevel = Math.floor(newScore / 1000) + 1;
-    if (newLevel > level) setLevel(newLevel);
-
+    setScore(newScore);
+    setLevel(newLevel);
     setBoard(newBoard);
 
     const newPiece = nextPiece;
     const newNext = getRandomTetromino();
-
-    if (newPiece && checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
-      setGameOver(true);
-      saveScoreToLeaderboard(newScore);
-      saveScoreToHistory(newScore);
-      onGameOver?.(newScore);
-      return;
-    }
-
     setCurrentPiece(newPiece);
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
-  }, [board, currentPiece, nextPiece, position, isPaused, score, level, onGameOver, user, lines]);
+
+    if (newPiece && !isValidMove(newBoard, { ...newPiece, position: { x: 3, y: 0 } })) {
+      setGameOver(true);
+      setGameStarted(false);
+      saveScoreToLeaderboard(newScore);
+      saveScoreToHistory(newScore);
+      
+      // BGM停止
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+        bgmAudioRef.current.currentTime = 0;
+      }
+      
+      if (onGameOver) {
+        onGameOver(newScore);
+      }
+    }
+  }, [currentPiece, nextPiece, position, board, score, level, onGameOver]);
 
   useEffect(() => {
-    if (!gameStarted || gameOver || isPaused) return;
-
     const handleKeyPress = (e: KeyboardEvent) => {
-      e.preventDefault();
-      switch (e.key) {
-        case 'ArrowLeft':
-          moveLeft();
-          break;
-        case 'ArrowRight':
-          moveRight();
-          break;
-        case 'ArrowDown':
-          moveDown();
-          break;
-        case 'ArrowUp':
-          rotate();
-          break;
-        case 'z':
-        case 'Z':
-          rotateCounterClockwise();
-          break;
-        case ' ':
-          hardDrop();
-          break;
+      if (!gameStarted || gameOver || isPaused) return;
+      if (e.key === 'ArrowLeft') moveLeft();
+      else if (e.key === 'ArrowRight') moveRight();
+      else if (e.key === 'ArrowDown') moveDown();
+      else if (e.key === 'ArrowUp' || e.key === 'x' || e.key === 'X') rotate();
+      else if (e.key === 'z' || e.key === 'Z') rotateCounterClockwise();
+      else if (e.key === ' ') {
+        e.preventDefault();
+        hardDrop();
+      } else if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+        togglePause();
       }
     };
 
@@ -606,9 +572,25 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [gameStarted, gameOver, isPaused, moveLeft, moveRight, moveDown, rotate, rotateCounterClockwise, hardDrop]);
 
   const startNewGame = () => {
-    setBoard(createBoard());
+    // BGMをランダムに選択して再生
+    const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3'];
+    const randomBGM = bgmList[Math.floor(Math.random() * bgmList.length)];
+    
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      bgmAudioRef.current.currentTime = 0;
+    }
+    
+    bgmAudioRef.current = new Audio(randomBGM);
+    bgmAudioRef.current.loop = true;
+    bgmAudioRef.current.volume = 0.3;
+    bgmAudioRef.current.play().catch((err) => {
+      console.error('BGM再生エラー:', err);
+    });
+    
     const firstPiece = getRandomTetromino();
     const secondPiece = getRandomTetromino();
+    setBoard(createBoard());
     setCurrentPiece(firstPiece);
     setNextPiece(secondPiece);
     setPosition({ x: 3, y: 0 });
@@ -625,9 +607,15 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const togglePause = () => setIsPaused((prev) => !prev);
 
   const handleBackToMenu = () => {
-    setGameStarted(false);
     setShowMenu(true);
+    setGameStarted(false);
     setGameOver(false);
+    
+    // BGM停止
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      bgmAudioRef.current.currentTime = 0;
+    }
   };
 
   const handleShowRanking = () => setShowLeaderboard(true);
@@ -638,47 +626,61 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     const isOjamaNext = nextPiece.isOjama;
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
-        <div style={{ display: 'inline-block', position: 'relative' }}>
-          {nextPiece.shape.map((row, y) => (
-            <div key={y} style={{ display: 'flex' }}>
-              {row.map((cell, x) => (
-                <div
-                  key={`${y}-${x}`}
-                  style={{
-                    width: 15,
-                    height: 15,
-                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
-                    border: cell === 1 ? '1px solid #444' : 'none',
-                    borderRadius: '1px',
-                    position: 'relative',
-                  }}
-                />
-              ))}
-            </div>
-          ))}
-
-          {isOjamaNext && (
-            <div style={{ position: 'absolute', top: '-1px', left: '-1px', width: '32px', height: '32px', pointerEvents: 'none' }}>
-              <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
-            </div>
-          )}
-        </div>
+      <div
+        className="flex items-center justify-center bg-black/30 rounded-lg p-2"
+        style={{
+          width: `${scaledCell * 4 + 16}px`,
+          height: `${scaledCell * 4 + 16}px`,
+        }}
+      >
+        {isOjamaNext ? (
+          <div
+            style={{
+              width: `${scaledCell * 2}px`,
+              height: `${scaledCell * 2}px`,
+              backgroundImage: 'url(/images/ojama-block.png)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          />
+        ) : (
+          <div className="grid">
+            {nextPiece.shape.map((row, y) => (
+              <div key={y} className="flex">
+                {row.map((cell, x) => (
+                  <div
+                    key={x}
+                    style={{
+                      width: `${scaledCell}px`,
+                      height: `${scaledCell}px`,
+                      backgroundColor: cell ? nextPiece.color : 'transparent',
+                      border: cell ? `${scaledBorder}px solid rgba(0,0,0,0.3)` : 'none',
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
 
   const renderBoard = () => {
     const displayBoard = board.map((row) => [...row]);
-
-    if (!gameOver && currentPiece) {
+    if (currentPiece && gameStarted && !gameOver) {
       currentPiece.shape.forEach((row, y) => {
         row.forEach((cell, x) => {
-          if (cell === 1) {
+          if (cell !== 0) {
             const boardY = position.y + y;
             const boardX = position.x + x;
-            if (boardY >= 0 && boardY < BOARD_HEIGHT && boardX >= 0 && boardX < BOARD_WIDTH) {
-              displayBoard[boardY][boardX] = currentPiece.isOjama ? 'OJAMA' : currentPiece.type;
+            if (
+              boardY >= 0 &&
+              boardY < BOARD_HEIGHT &&
+              boardX >= 0 &&
+              boardX < BOARD_WIDTH
+            ) {
+              displayBoard[boardY][boardX] = cell;
             }
           }
         });
@@ -686,63 +688,76 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
 
     const ojamaBlocks = new Set<string>();
-    for (let y = 0; y < BOARD_HEIGHT - 1; y++) {
-      for (let x = 0; x < BOARD_WIDTH - 1; x++) {
-        if (
-          displayBoard[y][x] === 'OJAMA' &&
-          displayBoard[y][x + 1] === 'OJAMA' &&
-          displayBoard[y + 1][x] === 'OJAMA' &&
-          displayBoard[y + 1][x + 1] === 'OJAMA'
-        ) {
-          ojamaBlocks.add(`${y},${x}`);
-        }
-      }
+    if (currentPiece && currentPiece.isOjama && gameStarted && !gameOver) {
+      currentPiece.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+          if (cell !== 0) {
+            const boardY = position.y + y;
+            const boardX = position.x + x;
+            if (
+              boardY >= 0 &&
+              boardY < BOARD_HEIGHT &&
+              boardX >= 0 &&
+              boardX < BOARD_WIDTH
+            ) {
+              ojamaBlocks.add(`${boardY},${boardX}`);
+            }
+          }
+        });
+      });
     }
 
     return (
-      <div style={{ position: 'relative' }}>
+      <div className="inline-block bg-black rounded-lg p-1">
         {displayBoard.map((row, y) => (
-          <div key={y} style={{ display: 'flex' }}>
+          <div key={y} className="flex">
             {row.map((cell, x) => {
               const isOjamaTopLeft = ojamaBlocks.has(`${y},${x}`);
               const isPartOfOjama2x2 =
-                ojamaBlocks.has(`${y},${x}`) ||
-                ojamaBlocks.has(`${y},${x - 1}`) ||
-                ojamaBlocks.has(`${y - 1},${x}`) ||
-                ojamaBlocks.has(`${y - 1},${x - 1}`);
+                isOjamaTopLeft &&
+                ojamaBlocks.has(`${y},${x + 1}`) &&
+                ojamaBlocks.has(`${y + 1},${x}`) &&
+                ojamaBlocks.has(`${y + 1},${x + 1}`);
 
+              if (isPartOfOjama2x2) {
+                return (
+                  <div
+                    key={x}
+                    style={{
+                      width: `${scaledCell}px`,
+                      height: `${scaledCell}px`,
+                      backgroundImage: 'url(/images/ojama-block.png)',
+                      backgroundSize: `${scaledCell * 2}px ${scaledCell * 2}px`,
+                      backgroundPosition: `0 0`,
+                    }}
+                  />
+                );
+              }
+
+              const bgColor = cell ? `hsl(${(cell * 40) % 360}, 70%, 50%)` : '#111';
               return (
                 <div
-                  key={`${y}-${x}`}
+                  key={x}
                   style={{
-                    width: scaledInner,
-                    height: scaledInner,
-                    backgroundColor: cell
-                      ? isPartOfOjama2x2
-                        ? 'transparent'
-                        : getTetrominoColor(cell as string)
-                      : '#1a1a1a',
-                    border: `${scaledBorder}px solid #333`,
-                    borderRadius: '2px',
-                    position: 'relative',
-                    overflow: 'visible',
+                    width: `${scaledCell}px`,
+                    height: `${scaledCell}px`,
+                    backgroundColor: bgColor,
+                    border: cell
+                      ? `${scaledBorder}px solid rgba(255,255,255,0.3)`
+                      : `1px solid rgba(255,255,255,0.1)`,
                   }}
                 >
-                  {isOjamaTopLeft && (
+                  {cell ? (
                     <div
                       style={{
-                        position: 'absolute',
-                        top: `-${scaledBorder}px`,
-                        left: `-${scaledBorder}px`,
-                        width: `${scaledInner * 2 + scaledBorder * 2}px`,
-                        height: `${scaledInner * 2 + scaledBorder * 2}px`,
-                        pointerEvents: 'none',
-                        zIndex: 10,
+                        width: `${scaledInner}px`,
+                        height: `${scaledInner}px`,
+                        margin: `${scaledBorder}px`,
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        borderRadius: '2px',
                       }}
-                    >
-                      <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
-                    </div>
-                  )}
+                    />
+                  ) : null}
                 </div>
               );
             })}
@@ -757,221 +772,226 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       <>
         <GameMenu
           onStartGame={startNewGame}
-          onShowHistory={handleShowHistory}
           onShowRanking={handleShowRanking}
-          username={user?.username}
-          pfpUrl={user?.pfpUrl}
+          onShowHistory={handleShowHistory}
+          user={user}
         />
-        <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} currentUserFid={user?.fid} />
-        <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserFid={user?.fid} />
+        {showLeaderboard && (
+          <Leaderboard
+            isOpen={showLeaderboard}
+            onClose={() => setShowLeaderboard(false)}
+          />
+        )}
+        {showHistory && (
+          <HistoryModal
+            isOpen={showHistory}
+            onClose={() => setShowHistory(false)}
+            currentUserFid={user?.fid}
+          />
+        )}
       </>
     );
   }
 
   return (
-    <div
-      className="flex flex-col w-full overflow-hidden bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
-      style={{
-        height: 'var(--app-height, 100dvh)',
-        paddingTop: 'env(safe-area-inset-top)',
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-        WebkitTouchCallout: 'none',
-      }}
-    >
-      {DEBUG_OVERLAY && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            zIndex: 9999,
-            fontSize: 12,
-            background: '#000',
-            color: '#0f0',
-            padding: 6,
-            lineHeight: 1.2,
-          }}
-        >
-          inFarcaster={String(isInFarcaster)} androidLike={String(androidLike)}
-          <br />
-          uaPlatform={getUADataPlatform()}
-          <br />
-          ratio={viewport.ratio.toFixed(2)} h={viewport.h} w={viewport.w}
-          <br />
-          tweak={String(shouldTweakAndroidSpacing)} pushPx={androidPushPx}
-        </div>
-      )}
-
-      {/* Main */}
+    <div className="h-[100dvh] overflow-hidden flex flex-col bg-gradient-to-br from-purple-900 via-blue-900 to-black text-white">
       <div
-        className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center"
-        style={{
-          paddingTop: `${layoutConfig.paddingTop}px`,
-          paddingBottom: '12px',
-        }}
+        className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-4"
+        style={{ paddingBottom: '80px' }}
       >
-        <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
-        </div>
-
-        {/* ★Android縦長だけ：pxで少しだけ下げる */}
-        {androidPushPx > 0 ? <div style={{ height: androidPushPx }} /> : null}
-
-        <div
-          className="flex items-center justify-center w-full max-w-md"
-          style={{
-            gap: '5px',
-            paddingLeft: `${layoutConfig.paddingX}px`,
-            paddingRight: `${layoutConfig.paddingX}px`,
-          }}
-        >
-          <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
-            {renderBoard()}
-            {gameOver && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg z-30">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-red-500 mb-4">GAME OVER</p>
-                  <p className="text-xl text-white mb-4">Score: {score}</p>
-                  <div className="flex flex-col gap-3 w-full">
-                    <button
-                      onClick={startNewGame}
-                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-full font-semibold transition-colors shadow-lg"
-                    >
-                      RETRY
-                    </button>
-                    <button
-                      onClick={handleBackToMenu}
-                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-full font-semibold transition-colors shadow-lg"
-                    >
-                      MENU
-                    </button>
-                  </div>
-                </div>
+        <div className="w-full max-w-md px-4">
+          <div className="flex justify-between items-start mb-4 gap-4">
+            <div className="flex-1 space-y-2 text-sm">
+              <div className="bg-black/30 rounded p-2">
+                <div className="text-yellow-300 font-bold">SCORE</div>
+                <div className="text-2xl font-mono">{score}</div>
               </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5" style={{ width: `${layoutConfig.sidePanelWidth}px` }}>
-            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
-              <p className="text-xs text-purple-300 mb-0.5">スコア</p>
-              <p className="text-base font-bold text-white">{score}</p>
+              <div className="bg-black/30 rounded p-2">
+                <div className="text-green-300 font-bold">LEVEL</div>
+                <div className="text-xl font-mono">{level}</div>
+              </div>
+              <div className="bg-black/30 rounded p-2">
+                <div className="text-blue-300 font-bold">LINES</div>
+                <div className="text-xl font-mono">{lines}</div>
+              </div>
             </div>
 
-            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
-              <p className="text-xs text-purple-300">レベル</p>
-              <p className="text-sm font-bold text-white mb-1">{level}</p>
-              <p className="text-xs text-purple-300">ライン</p>
-              <p className="text-sm font-bold text-white">{lines}</p>
+            <div
+              style={{
+                marginTop: `${androidPushPx}px`,
+                transition: 'margin-top 0.3s ease',
+              }}
+            >
+              {renderBoard()}
             </div>
 
-            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20">
-              <p className="text-xs text-purple-300 mb-1 text-center">Next</p>
+            <div className="flex-1 flex flex-col items-center space-y-2">
+              <div className="text-sm text-purple-300 font-bold mb-1">NEXT</div>
               {renderNextPiece()}
             </div>
+          </div>
+
+          {DEBUG_OVERLAY && (
+            <div className="bg-red-500/80 text-white text-xs p-2 rounded mb-2 font-mono">
+              <div>W={viewport.w} H={viewport.h}</div>
+              <div>Ratio={viewport.ratio.toFixed(2)}</div>
+              <div>Farcaster={isInFarcaster ? 'Y' : 'N'}</div>
+              <div>Android={androidLike ? 'Y' : 'N'}</div>
+              <div>Tweak={shouldTweakAndroidSpacing ? 'Y' : 'N'}</div>
+              <div>Push={androidPushPx}px</div>
+              <div>Scale={layoutConfig.boardScale.toFixed(2)}</div>
+            </div>
+          )}
+
+          {isPaused && !gameOver && (
+            <div className="bg-yellow-500/90 text-black font-bold text-center py-2 px-4 rounded-lg mb-2">
+              PAUSED - Press P to Resume
+            </div>
+          )}
+
+          {gameOver && (
+            <div className="bg-black/80 backdrop-blur-sm rounded-lg p-6 text-center space-y-4">
+              <h2 className="text-3xl font-bold text-red-400 mb-2">GAME OVER</h2>
+              <div className="text-xl">
+                Final Score: <span className="text-yellow-300 font-bold">{score}</span>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={startNewGame}
+                  className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-all"
+                >
+                  RESTART
+                </button>
+                <button
+                  onClick={handleBackToMenu}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                >
+                  MENU
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!gameOver && gameStarted && (
+        <div
+          className="shrink-0 w-full bg-black/50 backdrop-blur-sm border-t border-white/10"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <div
+            className="grid gap-2 p-3 mx-auto"
+            style={{
+              gridTemplateColumns: `repeat(5, ${layoutConfig.buttonSize}px)`,
+              maxWidth: 'fit-content',
+              gap: `${layoutConfig.gap}px`,
+            }}
+          >
+            <button
+              onClick={rotateCounterClockwise}
+              className="bg-purple-600/80 hover:bg-purple-700 active:bg-purple-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${layoutConfig.fontSize}px`,
+              }}
+            >
+              ↺
+            </button>
+            <button
+              onClick={rotate}
+              className="bg-purple-600/80 hover:bg-purple-700 active:bg-purple-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${layoutConfig.fontSize}px`,
+              }}
+            >
+              ↻
+            </button>
+            <button
+              onClick={moveLeft}
+              className="bg-blue-600/80 hover:bg-blue-700 active:bg-blue-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${layoutConfig.fontSize}px`,
+              }}
+            >
+              ←
+            </button>
+            <button
+              onClick={moveRight}
+              className="bg-blue-600/80 hover:bg-blue-700 active:bg-blue-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${layoutConfig.fontSize}px`,
+              }}
+            >
+              →
+            </button>
+            <button
+              onClick={moveDown}
+              className="bg-blue-600/80 hover:bg-blue-700 active:bg-blue-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${layoutConfig.fontSize}px`,
+              }}
+            >
+              ↓
+            </button>
 
             <button
-              onClick={() => setIsPaused((p) => !p)}
-              className="w-full py-1.5 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white rounded-lg text-xs font-semibold transition-colors"
+              onClick={hardDrop}
+              className="col-span-3 bg-red-600/80 hover:bg-red-700 active:bg-red-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${layoutConfig.fontSize}px`,
+              }}
             >
-              {isPaused ? 'RESTART' : 'PAUSE'}
+              HARD DROP
+            </button>
+            <button
+              onClick={togglePause}
+              className="bg-yellow-600/80 hover:bg-yellow-700 active:bg-yellow-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${Math.max(12, layoutConfig.fontSize - 2)}px`,
+              }}
+            >
+              {isPaused ? '▶' : '⏸'}
+            </button>
+            <button
+              onClick={handleBackToMenu}
+              className="bg-gray-600/80 hover:bg-gray-700 active:bg-gray-800 rounded-lg font-bold transition-colors flex items-center justify-center"
+              style={{
+                width: `${layoutConfig.buttonSize}px`,
+                height: `${layoutConfig.buttonSize}px`,
+                fontSize: `${Math.max(11, layoutConfig.fontSize - 3)}px`,
+              }}
+            >
+              MENU
             </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Controls */}
-      <div
-        className="shrink-0 w-full flex flex-col items-center bg-gradient-to-t from-purple-900/95 to-transparent backdrop-blur-sm py-2"
-        style={{
-          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
-          gap: '6px',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          WebkitTouchCallout: 'none',
-        }}
-      >
-        <div className="flex justify-center" style={{ gap: `${layoutConfig.gap}px` }}>
-          <button
-            onClick={rotateCounterClockwise}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            ↺
-          </button>
-          <button
-            onClick={rotate}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            ↻
-          </button>
-          <button
-            onClick={hardDrop}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.28}px`,
-            }}
-          >
-            DROP
-          </button>
-        </div>
-
-        <div className="flex justify-center" style={{ gap: `${layoutConfig.gap}px` }}>
-          <button
-            onClick={moveLeft}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            ←
-          </button>
-          <button
-            onClick={moveDown}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            ↓
-          </button>
-          <button
-            onClick={moveRight}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            →
-          </button>
-        </div>
-      </div>
-
-      <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} currentUserFid={user?.fid} />
-      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserFid={user?.fid} />
+      {showLeaderboard && (
+        <Leaderboard
+          isOpen={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+        />
+      )}
+      {showHistory && (
+        <HistoryModal
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          currentUserFid={user?.fid}
+        />
+      )}
     </div>
   );
 };
