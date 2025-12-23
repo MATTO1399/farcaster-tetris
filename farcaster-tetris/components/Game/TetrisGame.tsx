@@ -1,10 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { createBoard } from '@/utils/board';
-import { getRandomTetromino, rotateTetromino, counterRotateTetromino } from '@/utils/tetromino';
-import { isValidMove, mergePieceToBoard } from '@/utils/collision';
-import { clearLines } from '@/utils/board';
+import { 
+  createBoard, 
+  getRandomTetromino, 
+  rotateTetromino, 
+  checkCollision, 
+  mergeTetromino, 
+  clearLines 
+} from '@/utils/tetrisLogic';
 import type {
   Board,
   Tetromino,
@@ -15,7 +19,7 @@ import type {
   HistoryEntry,
 } from '@/types/tetris';
 import GameMenu from './GameMenu';
-import Leaderboard from './Leaderboard';
+import Leaderboard from '../Leaderboard';
 import HistoryModal from './HistoryModal';
 import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
 
@@ -162,6 +166,29 @@ const SRS_I_KICK_TABLE: Record<string, Position[]> = {
     { x: -1, y: 2 },
     { x: 2, y: -1 },
   ],
+};
+
+// 反時計回り回転用の関数を追加
+const counterRotateTetromino = (tetromino: Tetromino): Tetromino => {
+  if (tetromino.isOjama) {
+    return tetromino;
+  }
+
+  const n = tetromino.shape.length;
+  const rotated = Array(n)
+    .fill(null)
+    .map(() => Array(n).fill(0));
+
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      rotated[n - 1 - x][y] = tetromino.shape[y][x];
+    }
+  }
+
+  return {
+    ...tetromino,
+    shape: rotated,
+  };
 };
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
@@ -365,7 +392,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       if (!currentPiece) return;
 
       const pieceToMerge = { ...currentPiece, position: lockPosition };
-      let newBoard = mergePieceToBoard(board, pieceToMerge);
+      let newBoard = mergeTetromino(board, pieceToMerge);
 
       if (currentPiece.isOjama) {
         newBoard = createBoard();
@@ -398,13 +425,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       setPosition({ x: 3, y: 0 });
       setRotationState(0);
 
-      if (newPiece && !isValidMove(newBoard, { ...newPiece, position: { x: 3, y: 0 } })) {
+      if (newPiece && checkCollision(newBoard, { ...newPiece, position: { x: 3, y: 0 } })) {
         setGameOver(true);
         setGameStarted(false);
         saveScoreToLeaderboard(newScore);
         saveScoreToHistory(newScore);
         
-        // BGM停止
         if (bgmAudioRef.current) {
           bgmAudioRef.current.pause();
           bgmAudioRef.current.currentTime = 0;
@@ -421,7 +447,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   useEffect(() => {
     if (!currentPiece || !gameStarted || gameOver || isPaused) return;
     const pieceWithPosition = { ...currentPiece, position };
-    if (!isValidMove(board, pieceWithPosition)) {
+    if (checkCollision(board, pieceWithPosition)) {
       const prevPosition = { x: position.x, y: position.y - 1 };
       lockPiece(prevPosition);
     }
@@ -431,21 +457,21 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     if (!currentPiece) return;
     const newPosition = { x: position.x - 1, y: position.y };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
-    if (isValidMove(board, pieceWithPosition)) setPosition(newPosition);
+    if (!checkCollision(board, pieceWithPosition)) setPosition(newPosition);
   }, [currentPiece, position, board]);
 
   const moveRight = useCallback(() => {
     if (!currentPiece) return;
     const newPosition = { x: position.x + 1, y: position.y };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
-    if (isValidMove(board, pieceWithPosition)) setPosition(newPosition);
+    if (!checkCollision(board, pieceWithPosition)) setPosition(newPosition);
   }, [currentPiece, position, board]);
 
   const moveDown = useCallback(() => {
     if (!currentPiece) return;
     const newPosition = { x: position.x, y: position.y + 1 };
     const pieceWithPosition = { ...currentPiece, position: newPosition };
-    if (isValidMove(board, pieceWithPosition)) setPosition(newPosition);
+    if (!checkCollision(board, pieceWithPosition)) setPosition(newPosition);
   }, [currentPiece, position, board]);
 
   const rotate = useCallback(() => {
@@ -462,7 +488,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     for (const kick of kicks) {
       const testPosition = { x: position.x + kick.x, y: position.y + kick.y };
       const testPiece = { ...rotated, position: testPosition };
-      if (isValidMove(board, testPiece)) {
+      if (!checkCollision(board, testPiece)) {
         setCurrentPiece(rotated);
         setPosition(testPosition);
         setRotationState(newRotationState);
@@ -485,7 +511,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     for (const kick of kicks) {
       const testPosition = { x: position.x + kick.x, y: position.y + kick.y };
       const testPiece = { ...rotated, position: testPosition };
-      if (isValidMove(board, testPiece)) {
+      if (!checkCollision(board, testPiece)) {
         setCurrentPiece(rotated);
         setPosition(testPosition);
         setRotationState(newRotationState);
@@ -501,12 +527,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     while (true) {
       const nextPos = { x: dropPosition.x, y: dropPosition.y + 1 };
       const pieceWithPosition = { ...currentPiece, position: nextPos };
-      if (!isValidMove(board, pieceWithPosition)) break;
+      if (checkCollision(board, pieceWithPosition)) break;
       dropPosition = nextPos;
     }
 
     const pieceToMerge = { ...currentPiece, position: dropPosition };
-    let newBoard = mergePieceToBoard(board, pieceToMerge);
+    let newBoard = mergeTetromino(board, pieceToMerge);
 
     if (currentPiece.isOjama) {
       newBoard = createBoard();
@@ -539,13 +565,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
 
-    if (newPiece && !isValidMove(newBoard, { ...newPiece, position: { x: 3, y: 0 } })) {
+    if (newPiece && checkCollision(newBoard, { ...newPiece, position: { x: 3, y: 0 } })) {
       setGameOver(true);
       setGameStarted(false);
       saveScoreToLeaderboard(newScore);
       saveScoreToHistory(newScore);
       
-      // BGM停止
       if (bgmAudioRef.current) {
         bgmAudioRef.current.pause();
         bgmAudioRef.current.currentTime = 0;
@@ -578,7 +603,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [gameStarted, gameOver, isPaused, moveLeft, moveRight, moveDown, rotate, rotateCounterClockwise, hardDrop]);
 
   const startNewGame = () => {
-    // BGMをランダムに選択して再生
     const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3'];
     const randomBGM = bgmList[Math.floor(Math.random() * bgmList.length)];
     
@@ -617,7 +641,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setGameStarted(false);
     setGameOver(false);
     
-    // BGM停止
     if (bgmAudioRef.current) {
       bgmAudioRef.current.pause();
       bgmAudioRef.current.currentTime = 0;
