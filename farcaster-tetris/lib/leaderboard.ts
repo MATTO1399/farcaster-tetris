@@ -1,4 +1,9 @@
-import { kv } from '@vercel/kv';
+import { createClient } from '@vercel/kv';
+
+const kv = createClient({
+  url: process.env.KV2_KV_REST_API_URL!,
+  token: process.env.KV2_KV_REST_API_TOKEN!,
+});
 
 export interface LeaderboardEntry {
   fid: number;
@@ -14,14 +19,14 @@ export interface LeaderboardEntry {
 // スコアを保存
 export async function saveScore(entry: LeaderboardEntry): Promise<void> {
   const key = `leaderboard:${entry.fid}`;
-  
+
   // 既存のハイスコアを取得
   const existingEntry = await kv.get<LeaderboardEntry>(key);
-  
+
   // 新しいスコアが高い場合のみ更新
   if (!existingEntry || entry.score > existingEntry.score) {
     await kv.set(key, entry);
-    
+
     // ランキング用のソート済みセットに追加
     await kv.zadd('leaderboard:ranking', {
       score: entry.score,
@@ -34,13 +39,13 @@ export async function saveScore(entry: LeaderboardEntry): Promise<void> {
 export async function getTopScores(limit: number = 10): Promise<LeaderboardEntry[]> {
   // スコアの高い順に取得
   const topFids = await kv.zrange('leaderboard:ranking', 0, limit - 1, {
-    rev: true, // 降順
+    rev: true,
   });
-  
+
   if (!topFids || topFids.length === 0) {
     return [];
   }
-  
+
   // 各ユーザーの詳細情報を取得
   const entries: LeaderboardEntry[] = [];
   for (const fid of topFids) {
@@ -49,14 +54,14 @@ export async function getTopScores(limit: number = 10): Promise<LeaderboardEntry
       entries.push(entry);
     }
   }
-  
+
   return entries;
 }
 
 // 自分のランキングを取得
 export async function getUserRank(fid: number): Promise<number | null> {
   const rank = await kv.zrevrank('leaderboard:ranking', fid.toString());
-  return rank !== null ? rank + 1 : null; // 1-indexed
+  return rank !== null ? rank + 1 : null;
 }
 
 // 自分のハイスコアを取得
