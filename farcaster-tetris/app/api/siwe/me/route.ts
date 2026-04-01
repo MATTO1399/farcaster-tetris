@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
