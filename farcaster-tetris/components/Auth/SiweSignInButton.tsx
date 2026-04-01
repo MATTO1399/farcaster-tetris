@@ -36,7 +36,6 @@ type AnnouncedProvider = {
 
 declare global {
   interface Window {
-    ethereum?: EthereumProvider;
     phantom?: {
       ethereum?: EthereumProvider;
     };
@@ -116,7 +115,7 @@ function getAllCandidateProviders(
     pushProvider(item.provider, item.info);
   }
 
-  const rootEthereum = window.ethereum;
+  const rootEthereum = (window as Window & { ethereum?: EthereumProvider }).ethereum;
   if (rootEthereum) {
     if (Array.isArray(rootEthereum.providers)) {
       for (const provider of rootEthereum.providers) {
@@ -633,10 +632,10 @@ export default function SiweSignInButton({
       setError(null);
       setAuthenticating(true);
 
-      const result = await runAsyncMutation<{ connector: unknown }, { accounts?: readonly string[]; chainId?: number }>(
-        connect,
-        { connector: coinbaseConnector },
-      );
+      const result = await runAsyncMutation<
+        { connector: unknown },
+        { accounts?: readonly string[]; chainId?: number }
+      >(connect, { connector: coinbaseConnector });
 
       const walletAddress =
         Array.isArray(result?.accounts) && typeof result.accounts[0] === 'string'
