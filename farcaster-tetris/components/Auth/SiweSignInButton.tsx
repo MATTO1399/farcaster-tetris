@@ -269,18 +269,10 @@ async function runAsyncMutation<TVariables, TResult>(
     ) => void;
   };
 
-  if (typeof anyHook.mutateAsync === 'function') {
-    return anyHook.mutateAsync(variables);
-  }
-  if (typeof anyHook.connectAsync === 'function') {
-    return anyHook.connectAsync(variables);
-  }
-  if (typeof anyHook.disconnectAsync === 'function') {
-    return anyHook.disconnectAsync(variables);
-  }
-  if (typeof anyHook.signMessageAsync === 'function') {
-    return anyHook.signMessageAsync(variables);
-  }
+  if (typeof anyHook.mutateAsync === 'function') return anyHook.mutateAsync(variables);
+  if (typeof anyHook.connectAsync === 'function') return anyHook.connectAsync(variables);
+  if (typeof anyHook.disconnectAsync === 'function') return anyHook.disconnectAsync(variables);
+  if (typeof anyHook.signMessageAsync === 'function') return anyHook.signMessageAsync(variables);
 
   const candidate =
     anyHook.mutate ?? anyHook.connect ?? anyHook.disconnect ?? anyHook.signMessage;
@@ -397,12 +389,15 @@ export default function SiweSignInButton({
         detail?: { info?: Partial<Eip6963ProviderInfo>; provider?: EthereumProvider };
       }).detail;
 
-      if (!detail?.provider) return;
+      const provider = detail?.provider;
+      if (!provider) return;
+
+      const info = detail?.info;
 
       setAnnouncedProviders((prev) => {
-        const exists = prev.some((item) => item.provider === detail.provider);
+        const exists = prev.some((item) => item.provider === provider);
         if (exists) return prev;
-        return [...prev, { provider: detail.provider, info: detail.info }];
+        return [...prev, { provider, info }];
       });
     };
 
