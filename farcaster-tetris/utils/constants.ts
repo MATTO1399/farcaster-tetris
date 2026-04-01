@@ -1,11 +1,8 @@
-// ゲーム設定
+export const CELL_SIZE = 30;
 export const BOARD_WIDTH = 10;
 export const BOARD_HEIGHT = 20;
-export const CELL_SIZE = 30;
-export const INITIAL_SPEED = 1000; // ms
-export const SPEED_INCREMENT = 50; // レベルアップごとの速度増加
+export const NFT_THRESHOLD_SCORE = 1000; // NFT獲得に必要なスコア
 
-// テトリミノの形状定義
 export const TETROMINOS = {
   I: {
     shape: [
@@ -53,7 +50,7 @@ export const TETROMINOS = {
       [1, 1, 1],
       [0, 0, 0],
     ],
-    color: '#ff1493', // 蛍光ピンク
+    color: '#ff1493',
   },
   L: {
     shape: [
@@ -63,21 +60,11 @@ export const TETROMINOS = {
     ],
     color: '#f0a000',
   },
-};
-
-// スコア設定
-export const POINTS = {
-  SINGLE: 100,
-  DOUBLE: 300,
-  TRIPLE: 500,
-  TETRIS: 800,
-  SOFT_DROP: 1,
-  HARD_DROP: 2,
-};
-
-// NFT報酬のしきい値（オプション）
-export const NFT_THRESHOLD_SCORE = 1000;
-
-// Chain設定（Base Sepolia）
-export const CHAIN_ID = 84532;
-export const CHAIN_NAME = 'Base Sepolia';
+  OJAMA: {
+    shape: [
+      [1, 1],
+      [1, 1],
+    ],
+    color: 'OJAMA',
+  },
+} as const;
