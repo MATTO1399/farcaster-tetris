@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
+import SiweSignInButton from '../Auth/SiweSignInButton';
 
 interface GameMenuProps {
   onStartGame: () => void;
@@ -27,7 +28,6 @@ const GameMenu: React.FC<GameMenuProps> = ({
         WebkitTouchCallout: 'none',
       }}
     >
-      {/* ユーザー情報（右上） */}
       {username && (
         <div className="absolute top-6 right-6 flex items-center gap-2 bg-purple-600 rounded-full px-4 py-2">
           {pfpUrl && (
@@ -43,7 +43,6 @@ const GameMenu: React.FC<GameMenuProps> = ({
         </div>
       )}
 
-      {/* ロゴ/おじゃまブロック */}
       <div className="mb-8">
         <div className="relative w-32 h-32">
           <Image
@@ -56,7 +55,6 @@ const GameMenu: React.FC<GameMenuProps> = ({
         </div>
       </div>
 
-      {/* タイトル */}
       <h1
         className="text-5xl font-black text-center mb-2"
         style={{
@@ -68,20 +66,22 @@ const GameMenu: React.FC<GameMenuProps> = ({
       >
         FARTETRIS
       </h1>
-      
-      <p className="text-white text-center mb-12 text-lg">
+
+      <p className="text-white text-center mb-10 text-lg">
         ～Eternal Tetris～
       </p>
 
-      {/* メインボタン */}
       <button
         onClick={onStartGame}
-        className="w-full max-w-sm py-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xl font-bold rounded-full shadow-lg transition-all transform hover:scale-105 mb-6"
+        className="w-full max-w-sm py-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xl font-bold rounded-full shadow-lg transition-all transform hover:scale-105 mb-4"
       >
         START PLAYING
       </button>
 
-      {/* サブボタン */}
+      <div className="w-full max-w-sm mb-6">
+        <SiweSignInButton />
+      </div>
+
       <div className="flex gap-4 w-full max-w-sm">
         <button
           onClick={onShowHistory}
@@ -90,7 +90,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
           <span>🕐</span>
           <span>HISTORY</span>
         </button>
-        
+
         <button
           onClick={onShowRanking}
           className="flex-1 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white font-semibold rounded-full transition-colors flex items-center justify-center gap-2"

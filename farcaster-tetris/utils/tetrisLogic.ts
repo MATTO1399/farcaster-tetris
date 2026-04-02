@@ -26,7 +26,7 @@ export const createBoard = (): Board => {
 // ランダムなテトリミノを生成（5%の確率でおじゃまブロック）
 export const getRandomTetromino = (): Tetromino => {
   const random = Math.random();
-  
+
   // 5%の確率でおじゃまブロック
   if (random < 0.05) {
     const { shape, color } = TETROMINOS.OJAMA;
@@ -41,7 +41,7 @@ export const getRandomTetromino = (): Tetromino => {
       isOjama: true,
     };
   }
-  
+
   // 通常のテトリミノ
   const types = Object.keys(TETROMINOS).filter(t => t !== 'OJAMA') as TetrominoType[];
   const type = types[Math.floor(Math.random() * types.length)];
@@ -64,7 +64,7 @@ export const rotateTetromino = (tetromino: Tetromino): Tetromino => {
   if (tetromino.isOjama) {
     return tetromino; // おじゃまブロックは回転しない
   }
-  
+
   const n = tetromino.shape.length;
   const rotated = Array(n)
     .fill(null)
@@ -144,7 +144,7 @@ export const clearLines = (board: Board): { board: Board; linesCleared: number }
     if (hasOjama) {
       return true; // 行を残す
     }
-    
+
     // 通常のライン消去判定
     if (row.every((cell) => cell !== null)) {
       linesCleared++;
@@ -177,7 +177,7 @@ export const getTetrominoColor = (type: string): string => {
   if (type === 'OJAMA') {
     return 'transparent'; // 画像で表示するため透明
   }
-  
+
   const tetromino = TETROMINOS[type as TetrominoType];
   return tetromino ? tetromino.color : '#666666';
 };

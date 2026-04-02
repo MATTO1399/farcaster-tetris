@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveHistory, getHistory, type HistoryEntry } from '@/lib/history';
+import { saveHistory, getHistory, type HistoryEntry } from '../../../lib/history';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const entry: HistoryEntry = await request.json();
-    
-    if (!entry.fid || !entry.score) {
+
+    if (!entry.address || typeof entry.score !== 'number') {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
-    
+
     await saveHistory(entry);
-    
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to save history:', error);
@@ -27,18 +29,22 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const fid = searchParams.get('fid');
-    
-    if (!fid) {
+    const address = searchParams.get('address');
+
+    if (!address) {
       return NextResponse.json(
-        { error: 'Missing fid parameter' },
+        { error: 'Missing address parameter' },
         { status: 400 }
       );
     }
-    
-    const history = await getHistory(parseInt(fid));
-    
-    return NextResponse.json(history);
+
+    const history = await getHistory(address);
+
+    return NextResponse.json(history, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
+    });
   } catch (error) {
     console.error('Failed to get history:', error);
     return NextResponse.json(

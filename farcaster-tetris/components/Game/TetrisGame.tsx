@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import sdk from '@farcaster/frame-sdk';
 import Image from 'next/image';
+import { useAccount } from 'wagmi';
 import {
   createBoard,
   getRandomTetromino,
@@ -12,11 +12,9 @@ import {
   clearLines,
   calculateScore,
   getTetrominoColor,
-} from '@/utils/tetrisLogic';
-import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '@/utils/constants';
-import type { Board, Tetromino, Position } from '@/utils/tetrisLogic';
-import type { LeaderboardEntry } from '@/lib/leaderboard';
-import type { HistoryEntry } from '@/lib/history';
+} from '../../utils/tetrisLogic';
+import { BOARD_WIDTH, BOARD_HEIGHT, CELL_SIZE } from '../../utils/constants';
+import type { Board, Tetromino, Position } from '../../utils/tetrisLogic';
 import GameMenu from './GameMenu';
 import LeaderboardModal from './LeaderboardModal';
 import HistoryModal from './HistoryModal';
@@ -32,13 +30,6 @@ interface LayoutConfig {
   gap: number;
   paddingX: number;
   paddingTop: number;
-}
-
-interface FarcasterUser {
-  fid: number;
-  username: string;
-  displayName: string;
-  pfpUrl: string;
 }
 
 type RotationState = 0 | 1 | 2 | 3;
@@ -179,7 +170,16 @@ function isAndroidLike(): boolean {
   return /Android/i.test(ua) || /Android/i.test(plat);
 }
 
+function formatAddress(address?: string) {
+  if (!address) return '';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
+  const { address: wagmiAddress } = useAccount();
+  const [sessionAddress, setSessionAddress] = useState<string | null>(null);
+  const currentUserAddress = sessionAddress ?? wagmiAddress?.toLowerCase() ?? null;
+
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
   const [nextPiece, setNextPiece] = useState<Tetromino | null>(null);
@@ -194,13 +194,45 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [showMenu, setShowMenu] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [user, setUser] = useState<FarcasterUser | null>(null);
+
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [isInFarcaster, setIsInFarcaster] = useState(false);
   const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchSessionAddress = async () => {
+      try {
+        const response = await fetch('/api/siwe/me', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          if (data?.authenticated && typeof data?.address === 'string') {
+            setSessionAddress(data.address.toLowerCase());
+          } else {
+            setSessionAddress(null);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setSessionAddress(null);
+        }
+      }
+    };
+
+    void fetchSessionAddress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
@@ -232,7 +264,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
     boardScale: 0.72,
-    sidePanelWidth: 85,
+    sidePanelWidth: 104,
     buttonSize: 56,
     gap: 5,
     paddingX: 12,
@@ -249,22 +281,71 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
       if (width <= 375) {
         if (aspectRatio > 2.0) {
-          config = { boardScale: 0.68, sidePanelWidth: 80, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
+          config = {
+            boardScale: 0.68,
+            sidePanelWidth: 96,
+            buttonSize: 52,
+            gap: 5,
+            paddingX: 8,
+            paddingTop: 15,
+          };
         } else {
-          config = { boardScale: 0.65, sidePanelWidth: 80, buttonSize: 50, gap: 5, paddingX: 8, paddingTop: 20 };
+          config = {
+            boardScale: 0.65,
+            sidePanelWidth: 96,
+            buttonSize: 50,
+            gap: 5,
+            paddingX: 8,
+            paddingTop: 20,
+          };
         }
       } else if (width <= 390) {
-        config = { boardScale: 0.7, sidePanelWidth: 85, buttonSize: 54, gap: 5, paddingX: 10, paddingTop: 25 };
+        config = {
+          boardScale: 0.7,
+          sidePanelWidth: 100,
+          buttonSize: 54,
+          gap: 5,
+          paddingX: 10,
+          paddingTop: 25,
+        };
       } else if (width <= 414) {
-        config = { boardScale: 0.75, sidePanelWidth: 90, buttonSize: 56, gap: 5, paddingX: 12, paddingTop: 30 };
+        config = {
+          boardScale: 0.75,
+          sidePanelWidth: 104,
+          buttonSize: 56,
+          gap: 5,
+          paddingX: 12,
+          paddingTop: 30,
+        };
       } else if (width <= 768) {
         if (aspectRatio < 1.0) {
-          config = { boardScale: 0.6, sidePanelWidth: 95, buttonSize: 60, gap: 5, paddingX: 16, paddingTop: 20 };
+          config = {
+            boardScale: 0.6,
+            sidePanelWidth: 108,
+            buttonSize: 60,
+            gap: 5,
+            paddingX: 16,
+            paddingTop: 20,
+          };
         } else {
-          config = { boardScale: 0.85, sidePanelWidth: 100, buttonSize: 64, gap: 5, paddingX: 16, paddingTop: 30 };
+          config = {
+            boardScale: 0.85,
+            sidePanelWidth: 110,
+            buttonSize: 64,
+            gap: 5,
+            paddingX: 16,
+            paddingTop: 30,
+          };
         }
       } else {
-        config = { boardScale: 0.9, sidePanelWidth: 110, buttonSize: 68, gap: 5, paddingX: 20, paddingTop: 30 };
+        config = {
+          boardScale: 0.9,
+          sidePanelWidth: 112,
+          buttonSize: 68,
+          gap: 5,
+          paddingX: 20,
+          paddingTop: 30,
+        };
       }
 
       setLayoutConfig(config);
@@ -283,33 +364,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
-  useEffect(() => {
-    const initFarcaster = async () => {
-      try {
-        const context = await sdk.context;
-        setIsInFarcaster(true);
-        setAndroidLike(isAndroidLike());
-
-        if (context.user) {
-          setUser({
-            fid: context.user.fid,
-            username: context.user.username || `user${context.user.fid}`,
-            displayName: context.user.displayName || context.user.username || `User ${context.user.fid}`,
-            pfpUrl: context.user.pfpUrl || '',
-          });
-        }
-
-        sdk.actions.ready();
-      } catch (error) {
-        console.error('Farcaster SDK error:', error);
-      }
-    };
-    initFarcaster();
-  }, []);
-
   const shouldTweakAndroidSpacing =
-    (androidLike && viewport.w <= 450 && viewport.ratio >= 1.85) ||
-    (isInFarcaster && viewport.w <= 450 && viewport.ratio >= 1.90);
+    androidLike && viewport.w <= 450 && viewport.ratio >= 1.85;
 
   const androidPushPx = shouldTweakAndroidSpacing
     ? Math.round(clamp((viewport.h - 680) * 0.7, 16, 74))
@@ -337,14 +393,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [gameOver, isPaused, level, gameStarted, currentPiece]);
 
   const saveScoreToLeaderboard = async (finalScore: number) => {
-    if (!user) return;
+    if (!currentUserAddress) return;
 
     try {
-      const entry: LeaderboardEntry = {
-        fid: user.fid,
-        username: user.username,
-        displayName: user.displayName,
-        pfpUrl: user.pfpUrl,
+      const entry = {
+        address: currentUserAddress,
+        username: formatAddress(currentUserAddress),
+        displayName: formatAddress(currentUserAddress),
+        pfpUrl: '',
         score: finalScore,
         level,
         lines,
@@ -362,14 +418,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   };
 
   const saveScoreToHistory = async (finalScore: number) => {
-    if (!user) return;
+    if (!currentUserAddress) return;
 
     try {
-      const entry: HistoryEntry = {
-        fid: user.fid,
-        username: user.username,
-        displayName: user.displayName,
-        pfpUrl: user.pfpUrl,
+      const entry = {
+        address: currentUserAddress,
+        username: formatAddress(currentUserAddress),
+        displayName: formatAddress(currentUserAddress),
+        pfpUrl: '',
         score: finalScore,
         level,
         lines,
@@ -426,12 +482,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         setGameOver(true);
         saveScoreToLeaderboard(newScore);
         saveScoreToHistory(newScore);
-        
+
         if (bgmAudioRef.current) {
           bgmAudioRef.current.pause();
           bgmAudioRef.current.currentTime = 0;
         }
-        
+
         onGameOver?.(newScore);
         return;
       }
@@ -441,7 +497,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       setPosition({ x: 3, y: 0 });
       setRotationState(0);
     },
-    [board, currentPiece, nextPiece, level, score, lines, onGameOver, user]
+    [board, currentPiece, nextPiece, level, score, lines, onGameOver, currentUserAddress]
   );
 
   useEffect(() => {
@@ -569,12 +625,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       setGameOver(true);
       saveScoreToLeaderboard(newScore);
       saveScoreToHistory(newScore);
-      
+
       if (bgmAudioRef.current) {
         bgmAudioRef.current.pause();
         bgmAudioRef.current.currentTime = 0;
       }
-      
+
       onGameOver?.(newScore);
       return;
     }
@@ -583,7 +639,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
-  }, [board, currentPiece, nextPiece, position, isPaused, score, level, onGameOver, user, lines]);
+  }, [board, currentPiece, nextPiece, position, isPaused, score, level, onGameOver, currentUserAddress, lines]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
@@ -620,19 +676,19 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const startNewGame = () => {
     const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3', '/sounds/music_C.mp3'];
     const randomBGM = bgmList[Math.floor(Math.random() * bgmList.length)];
-    
+
     if (bgmAudioRef.current) {
       bgmAudioRef.current.pause();
       bgmAudioRef.current.currentTime = 0;
     }
-    
+
     bgmAudioRef.current = new Audio(randomBGM);
     bgmAudioRef.current.loop = true;
     bgmAudioRef.current.volume = 0.3;
     bgmAudioRef.current.play().catch((err) => {
-      console.error('BGM再生エラー:', err);
+      console.error('BGM:', err);
     });
-    
+
     setBoard(createBoard());
     const firstPiece = getRandomTetromino();
     const secondPiece = getRandomTetromino();
@@ -649,13 +705,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setShowMenu(false);
   };
 
-  const togglePause = () => setIsPaused((prev) => !prev);
-
   const handleBackToMenu = () => {
     setGameStarted(false);
     setShowMenu(true);
     setGameOver(false);
-    
+
     if (bgmAudioRef.current) {
       bgmAudioRef.current.pause();
       bgmAudioRef.current.currentTime = 0;
@@ -680,7 +734,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                   style={{
                     width: 15,
                     height: 15,
-                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
+                    backgroundColor:
+                      cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
                     border: cell === 1 ? '1px solid #444' : 'none',
                     borderRadius: '1px',
                     position: 'relative',
@@ -791,11 +846,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           onStartGame={startNewGame}
           onShowHistory={handleShowHistory}
           onShowRanking={handleShowRanking}
-          username={user?.username}
-          pfpUrl={user?.pfpUrl}
+          username={currentUserAddress ? formatAddress(currentUserAddress) : undefined}
         />
-        <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} currentUserFid={user?.fid} />
-        <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserFid={user?.fid} />
+        <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+        <HistoryModal
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          currentUserAddress={currentUserAddress ?? undefined}
+        />
       </>
     );
   }
@@ -825,7 +883,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             lineHeight: 1.2,
           }}
         >
-          inFarcaster={String(isInFarcaster)} androidLike={String(androidLike)}
+          androidLike={String(androidLike)}
           <br />
           uaPlatform={getUADataPlatform()}
           <br />
@@ -851,7 +909,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         <div
           className="flex items-center justify-center w-full max-w-md"
           style={{
-            gap: '5px',
+            gap: '6px',
             paddingLeft: `${layoutConfig.paddingX}px`,
             paddingRight: `${layoutConfig.paddingX}px`,
           }}
@@ -882,27 +940,50 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5" style={{ width: `${layoutConfig.sidePanelWidth}px` }}>
-            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
-              <p className="text-xs text-purple-300 mb-0.5">スコア</p>
-              <p className="text-base font-bold text-white">{score}</p>
+          <div
+            className="flex flex-col gap-2"
+            style={{ width: `${layoutConfig.sidePanelWidth}px` }}
+          >
+            <div className="bg-[#2c2363] rounded-[14px] px-3 py-3 text-center shadow-md">
+              <p className="text-[11px] text-[#cbbcff] mb-1 font-semibold tracking-wide">
+                スコア
+              </p>
+              <p className="text-[20px] font-extrabold text-white leading-none">
+                {score}
+              </p>
             </div>
 
-            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20 text-center">
-              <p className="text-xs text-purple-300">レベル</p>
-              <p className="text-sm font-bold text-white mb-1">{level}</p>
-              <p className="text-xs text-purple-300">ライン</p>
-              <p className="text-sm font-bold text-white">{lines}</p>
+            <div className="bg-[#2c2363] rounded-[14px] px-3 py-3 text-center shadow-md">
+              <p className="text-[11px] text-[#cbbcff] mb-1 font-semibold tracking-wide">
+                レベル
+              </p>
+              <p className="text-[20px] font-extrabold text-white leading-none mb-3">
+                {level}
+              </p>
+
+              <p className="text-[11px] text-[#cbbcff] mb-1 font-semibold tracking-wide">
+                ライン
+              </p>
+              <p className="text-[20px] font-extrabold text-white leading-none">
+                {lines}
+              </p>
             </div>
 
-            <div className="bg-black/30 backdrop-blur-sm rounded-lg p-1.5 border border-purple-400/20">
-              <p className="text-xs text-purple-300 mb-1 text-center">Next</p>
-              {renderNextPiece()}
+            <div className="bg-[#2c2363] rounded-[14px] px-3 py-3 text-center shadow-md">
+              <p className="text-[11px] text-[#cbbcff] mb-2 font-semibold tracking-wide">
+                Next
+              </p>
+              <div className="flex items-center justify-center min-h-[56px]">
+                {renderNextPiece()}
+              </div>
             </div>
 
             <button
-              onClick={() => setIsPaused((p) => !p)}
-              className="w-full py-1.5 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white rounded-lg text-xs font-semibold transition-colors"
+              onClick={() => setIsPaused((prev) => !prev)}
+              className="w-full rounded-[14px] py-3 text-white font-extrabold text-[14px] shadow-md"
+              style={{
+                background: 'linear-gradient(90deg, #f59e0b 0%, #f97316 100%)',
+              }}
             >
               {isPaused ? 'RESTART' : 'PAUSE'}
             </button>
@@ -999,8 +1080,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
       </div>
 
-      <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} currentUserFid={user?.fid} />
-      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserFid={user?.fid} />
+      <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+      <HistoryModal
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        currentUserAddress={currentUserAddress ?? undefined}
+      />
     </div>
   );
 };

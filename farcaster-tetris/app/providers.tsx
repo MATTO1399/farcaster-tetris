@@ -1,31 +1,31 @@
 'use client';
 
-import { ReactNode } from 'react';
-import { WagmiProvider, createConfig, http } from 'wagmi';
-import { baseSepolia } from 'wagmi/chains';
+import { ReactNode, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createConfig, http, WagmiProvider } from 'wagmi';
+import { base, baseSepolia } from 'wagmi/chains';
 import { coinbaseWallet } from 'wagmi/connectors';
 
-// Wagmi設定
-const config = createConfig({
-  chains: [baseSepolia],
+const wagmiConfig = createConfig({
+  chains: [base, baseSepolia],
   connectors: [
     coinbaseWallet({
-      appName: 'Tetris Mini App',
-      appLogoUrl: '/icon.png',
+      appName: 'FARTETRIS',
     }),
   ],
   transports: {
+    [base.id]: http(),
     [baseSepolia.id]: http(),
   },
+  multiInjectedProviderDiscovery: false,
+  ssr: true,
 });
 
-// React Query設定
-const queryClient = new QueryClient();
-
 export function Providers({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
+
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {children}
       </QueryClientProvider>

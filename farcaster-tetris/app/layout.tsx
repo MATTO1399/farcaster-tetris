@@ -1,32 +1,24 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
+import { Providers } from './providers'
+import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
   title: 'FARTETRIS',
-  description: 'Play FARTETRIS on Farcaster',
-  openGraph: {
-    title: 'FARTETRIS',
-    description: 'Play FARTETRIS on Farcaster',
-    images: ['/icon.png'],
-  },
-  other: {
-    'fc:frame': 'vNext',
-    'fc:frame:image': '/splash.png',
-    'fc:frame:button:1': 'Play FARTETRIS',
-    'fc:frame:button:1:action': 'link',
-    'fc:frame:button:1:target': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-    'base:app_id': '693e193fd19763ca26ddc2a4',  // ← この行を追加
-  },
-};
+  description: 'FARTETRIS on Base',
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode
 }) {
   return (
     <html lang="ja">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
-  );
+  )
 }
