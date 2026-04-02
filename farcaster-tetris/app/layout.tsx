@@ -1,24 +1,18 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import { Providers } from './providers';
+import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
+import { Providers } from './providers'
+import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
   title: 'FARTETRIS',
-  description: 'Play FARTETRIS on Base App',
-  openGraph: {
-    title: 'FARTETRIS',
-    description: 'Play FARTETRIS on Base App',
-    images: ['/icon.png'],
-  },
-  other: {
-    'base:app_id': '693e193fd19763ca26ddc2a4',
-  },
-};
+  description: 'FARTETRIS on Base',
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode
 }) {
   return (
     <html lang="ja">
@@ -26,5 +20,5 @@ export default function RootLayout({
         <Providers>{children}</Providers>
       </body>
     </html>
-  );
+  )
 }
