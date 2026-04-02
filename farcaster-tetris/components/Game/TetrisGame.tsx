@@ -176,7 +176,9 @@ function formatAddress(address?: string) {
 }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  const { address } = useAccount();
+  const { address: wagmiAddress } = useAccount();
+  const [sessionAddress, setSessionAddress] = useState<string | null>(null);
+  const currentUserAddress = sessionAddress ?? wagmiAddress?.toLowerCase() ?? null;
 
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
@@ -198,6 +200,39 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchSessionAddress = async () => {
+      try {
+        const response = await fetch('/api/siwe/me', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          if (data?.authenticated && typeof data?.address === 'string') {
+            setSessionAddress(data.address.toLowerCase());
+          } else {
+            setSessionAddress(null);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setSessionAddress(null);
+        }
+      }
+    };
+
+    void fetchSessionAddress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
@@ -246,22 +281,71 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
       if (width <= 375) {
         if (aspectRatio > 2.0) {
-          config = { boardScale: 0.68, sidePanelWidth: 96, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
+          config = {
+            boardScale: 0.68,
+            sidePanelWidth: 96,
+            buttonSize: 52,
+            gap: 5,
+            paddingX: 8,
+            paddingTop: 15,
+          };
         } else {
-          config = { boardScale: 0.65, sidePanelWidth: 96, buttonSize: 50, gap: 5, paddingX: 8, paddingTop: 20 };
+          config = {
+            boardScale: 0.65,
+            sidePanelWidth: 96,
+            buttonSize: 50,
+            gap: 5,
+            paddingX: 8,
+            paddingTop: 20,
+          };
         }
       } else if (width <= 390) {
-        config = { boardScale: 0.7, sidePanelWidth: 100, buttonSize: 54, gap: 5, paddingX: 10, paddingTop: 25 };
+        config = {
+          boardScale: 0.7,
+          sidePanelWidth: 100,
+          buttonSize: 54,
+          gap: 5,
+          paddingX: 10,
+          paddingTop: 25,
+        };
       } else if (width <= 414) {
-        config = { boardScale: 0.75, sidePanelWidth: 104, buttonSize: 56, gap: 5, paddingX: 12, paddingTop: 30 };
+        config = {
+          boardScale: 0.75,
+          sidePanelWidth: 104,
+          buttonSize: 56,
+          gap: 5,
+          paddingX: 12,
+          paddingTop: 30,
+        };
       } else if (width <= 768) {
         if (aspectRatio < 1.0) {
-          config = { boardScale: 0.6, sidePanelWidth: 108, buttonSize: 60, gap: 5, paddingX: 16, paddingTop: 20 };
+          config = {
+            boardScale: 0.6,
+            sidePanelWidth: 108,
+            buttonSize: 60,
+            gap: 5,
+            paddingX: 16,
+            paddingTop: 20,
+          };
         } else {
-          config = { boardScale: 0.85, sidePanelWidth: 110, buttonSize: 64, gap: 5, paddingX: 16, paddingTop: 30 };
+          config = {
+            boardScale: 0.85,
+            sidePanelWidth: 110,
+            buttonSize: 64,
+            gap: 5,
+            paddingX: 16,
+            paddingTop: 30,
+          };
         }
       } else {
-        config = { boardScale: 0.9, sidePanelWidth: 112, buttonSize: 68, gap: 5, paddingX: 20, paddingTop: 30 };
+        config = {
+          boardScale: 0.9,
+          sidePanelWidth: 112,
+          buttonSize: 68,
+          gap: 5,
+          paddingX: 20,
+          paddingTop: 30,
+        };
       }
 
       setLayoutConfig(config);
@@ -309,13 +393,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [gameOver, isPaused, level, gameStarted, currentPiece]);
 
   const saveScoreToLeaderboard = async (finalScore: number) => {
-    if (!address) return;
+    if (!currentUserAddress) return;
 
     try {
       const entry = {
-        address: address.toLowerCase(),
-        username: formatAddress(address),
-        displayName: formatAddress(address),
+        address: currentUserAddress,
+        username: formatAddress(currentUserAddress),
+        displayName: formatAddress(currentUserAddress),
         pfpUrl: '',
         score: finalScore,
         level,
@@ -334,13 +418,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   };
 
   const saveScoreToHistory = async (finalScore: number) => {
-    if (!address) return;
+    if (!currentUserAddress) return;
 
     try {
       const entry = {
-        address: address.toLowerCase(),
-        username: formatAddress(address),
-        displayName: formatAddress(address),
+        address: currentUserAddress,
+        username: formatAddress(currentUserAddress),
+        displayName: formatAddress(currentUserAddress),
         pfpUrl: '',
         score: finalScore,
         level,
@@ -413,7 +497,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       setPosition({ x: 3, y: 0 });
       setRotationState(0);
     },
-    [board, currentPiece, nextPiece, level, score, lines, onGameOver, address]
+    [board, currentPiece, nextPiece, level, score, lines, onGameOver, currentUserAddress]
   );
 
   useEffect(() => {
@@ -555,7 +639,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
-  }, [board, currentPiece, nextPiece, position, isPaused, score, level, onGameOver, address, lines]);
+  }, [board, currentPiece, nextPiece, position, isPaused, score, level, onGameOver, currentUserAddress, lines]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
@@ -650,7 +734,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                   style={{
                     width: 15,
                     height: 15,
-                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
+                    backgroundColor:
+                      cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
                     border: cell === 1 ? '1px solid #444' : 'none',
                     borderRadius: '1px',
                     position: 'relative',
@@ -761,13 +846,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           onStartGame={startNewGame}
           onShowHistory={handleShowHistory}
           onShowRanking={handleShowRanking}
-          username={address ? formatAddress(address) : undefined}
+          username={currentUserAddress ? formatAddress(currentUserAddress) : undefined}
         />
         <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
         <HistoryModal
           isOpen={showHistory}
           onClose={() => setShowHistory(false)}
-          currentUserAddress={address?.toLowerCase()}
+          currentUserAddress={currentUserAddress ?? undefined}
         />
       </>
     );
@@ -999,7 +1084,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       <HistoryModal
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
-        currentUserAddress={address?.toLowerCase()}
+        currentUserAddress={currentUserAddress ?? undefined}
       />
     </div>
   );
