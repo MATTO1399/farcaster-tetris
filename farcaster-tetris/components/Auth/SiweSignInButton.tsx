@@ -360,7 +360,7 @@ export default function SiweSignInButton({
     sessionAddress ?? connectedAddress ?? normalizeAddress(wagmiAddress) ?? null;
 
   const isAuthenticated = !!sessionAddress;
-  const activeWalletLabel = selectedWalletId ? walletLabelById(selectedWalletId) : '接続中';
+  const activeWalletLabel = selectedWalletId ? walletLabelById(selectedWalletId) : 'Connected';
 
   const connectPending =
     Boolean((connect as { isPending?: boolean }).isPending) ||
@@ -731,7 +731,7 @@ export default function SiweSignInButton({
             disabled={anyBusy}
             className="w-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-5 py-3 text-center text-sm font-bold text-white shadow-lg transition hover:scale-[1.02] hover:from-orange-400 hover:to-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {anyBusy ? '接続中...' : 'ウォレット'}
+            {anyBusy ? 'Connecting...' : 'Wallet'}
           </button>
 
           {renderErrorBox()}
@@ -740,7 +740,7 @@ export default function SiweSignInButton({
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
               <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#6c3e9a] p-4 shadow-2xl">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-base font-extrabold text-white">ウォレットを接続</h3>
+                  <h3 className="text-base font-extrabold text-white">Connect Wallet</h3>
                   <button
                     type="button"
                     onClick={() => setWalletModalOpen(false)}
@@ -760,7 +760,7 @@ export default function SiweSignInButton({
                       anyBusy && 'cursor-not-allowed opacity-60',
                     )}
                   >
-                    {busyWalletId === 'metamask' ? '接続中...' : 'MetaMask'}
+                    {busyWalletId === 'metamask' ? 'Connecting...' : 'MetaMask'}
                   </button>
 
                   <button
@@ -772,7 +772,7 @@ export default function SiweSignInButton({
                       anyBusy && 'cursor-not-allowed opacity-60',
                     )}
                   >
-                    {busyWalletId === 'rabby' ? '接続中...' : 'Rabby'}
+                    {busyWalletId === 'rabby' ? 'Connecting...' : 'Rabby'}
                   </button>
 
                   <button
@@ -784,7 +784,7 @@ export default function SiweSignInButton({
                       anyBusy && 'cursor-not-allowed opacity-60',
                     )}
                   >
-                    {busyWalletId === 'phantom' ? '接続中...' : 'Phantom'}
+                    {busyWalletId === 'phantom' ? 'Connecting...' : 'Phantom'}
                   </button>
 
                   <button
@@ -796,7 +796,7 @@ export default function SiweSignInButton({
                       anyBusy && 'cursor-not-allowed opacity-60',
                     )}
                   >
-                    {busyWalletId === 'coinbase' ? '接続中...' : 'Coinbase Wallet'}
+                    {busyWalletId === 'coinbase' ? 'Connecting...' : 'Coinbase Wallet'}
                   </button>
                 </div>
 
@@ -821,7 +821,7 @@ export default function SiweSignInButton({
             disabled={disconnectPending}
             className="w-full rounded-full bg-gradient-to-r from-slate-600 to-slate-700 px-4 py-3 text-sm font-bold text-white transition hover:from-slate-500 hover:to-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {disconnectPending ? '切断中...' : 'ウォレットを切断'}
+            {disconnectPending ? 'Disconnecting...' : 'Disconnect Wallet'}
           </button>
 
           {renderErrorBox()}
