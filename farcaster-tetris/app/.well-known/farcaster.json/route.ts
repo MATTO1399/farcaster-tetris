@@ -9,12 +9,14 @@ export async function GET() {
     },
     frame: {
       version: "1",
-      name: "Tetris",
+      name: "FARTETRIS",
       iconUrl: "https://farcaster-tetris.vercel.app/icon.png",
       splashImageUrl: "https://farcaster-tetris.vercel.app/splash.png",
       splashBackgroundColor: "#1e1b4b",
       homeUrl: "https://farcaster-tetris.vercel.app",
-      webhookUrl: "https://farcaster-tetris.vercel.app/api/webhook"
+      webhookUrl: "https://farcaster-tetris.vercel.app/api/webhook",
+      primaryCategory: "games",  // ← 追加
+      tags: ["tetris", "game", "arcade", "puzzle", "classic"]  // ← 追加（最大5つ）
     }
   });
 }

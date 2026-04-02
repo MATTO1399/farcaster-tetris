@@ -3,10 +3,10 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Tetris - Farcaster Mini App',
+  title: 'FARTETRIS - Farcaster Mini App',
   description: 'Classic Tetris game as a Farcaster Mini App with NFT rewards',
   openGraph: {
-    title: 'Tetris - Farcaster Mini App',
+    title: 'FARTETRIS - Farcaster Mini App',
     description: 'Play Tetris and earn NFT rewards for high scores!',
     images: ['/icon.png'],
   },

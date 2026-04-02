@@ -231,10 +231,15 @@ NFT機能を有効化すると：
 - Farcaster Discord: コミュニティサポート
 - Base Discord: ブロックチェーン関連
 
-## ⚖️ ライセンス
+## 📝 License
 
-MIT License - 自由に使用・改変・配布可能
+Copyright © 2025 MATTO1399. All rights reserved.
 
+このプロジェクトは閲覧および参考目的のみです。
+許可なく複製、改変、配布、商用利用することを禁じます。
+
+This project is for viewing and reference purposes only. 
+Unauthorized copying, modification, distribution, or commercial use is prohibited without explicit permission.
 ---
 
 **ハイスコアを達成してNFTをゲットしよう！** 🎮🏆
