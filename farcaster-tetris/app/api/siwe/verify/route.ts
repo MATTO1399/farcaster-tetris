@@ -33,11 +33,7 @@ function encodeSession(payload: SessionPayload) {
 }
 
 function getRequestHost(request: NextRequest) {
-  return (
-    request.headers.get('x-forwarded-host') ||
-    request.headers.get('host') ||
-    ''
-  );
+  return request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
 }
 
 export async function POST(request: NextRequest) {
@@ -114,8 +110,15 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('SIWE verify error:', error);
 
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'SIWE verification failed';
+
     return NextResponse.json(
-      { ok: false, error: 'SIWE verification failed' },
+      { ok: false, error: message },
       { status: 401 }
     );
   }
