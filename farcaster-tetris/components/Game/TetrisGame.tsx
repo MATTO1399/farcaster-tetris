@@ -324,6 +324,9 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
   }, [viewport.w, viewport.h]);
 
+  const shouldCenterOnDesktop =
+    viewport.w >= 768 && viewport.h >= 700 && !layoutConfig.compact;
+
   const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
@@ -906,12 +909,15 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         className="mx-auto flex w-full flex-col items-center"
         style={{
           maxWidth: 520,
+          minHeight:
+            'calc(var(--app-height, 100dvh) - env(safe-area-inset-top) - env(safe-area-inset-bottom))',
           paddingLeft: `${layoutConfig.paddingX}px`,
           paddingRight: `${layoutConfig.paddingX}px`,
-          paddingTop: `${layoutConfig.paddingTop}px`,
+          paddingTop: shouldCenterOnDesktop ? '16px' : `${layoutConfig.paddingTop}px`,
           paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
           gap: `${layoutConfig.sectionGap}px`,
           boxSizing: 'border-box',
+          justifyContent: shouldCenterOnDesktop ? 'center' : 'flex-start',
         }}
       >
         <div className="text-center" style={{ marginBottom: `${layoutConfig.titleMarginBottom}px` }}>
