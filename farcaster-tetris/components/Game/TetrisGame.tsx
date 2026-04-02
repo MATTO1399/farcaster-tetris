@@ -281,71 +281,22 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
       if (width <= 375) {
         if (aspectRatio > 2.0) {
-          config = {
-            boardScale: 0.68,
-            sidePanelWidth: 96,
-            buttonSize: 52,
-            gap: 5,
-            paddingX: 8,
-            paddingTop: 15,
-          };
+          config = { boardScale: 0.68, sidePanelWidth: 96, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
         } else {
-          config = {
-            boardScale: 0.65,
-            sidePanelWidth: 96,
-            buttonSize: 50,
-            gap: 5,
-            paddingX: 8,
-            paddingTop: 20,
-          };
+          config = { boardScale: 0.65, sidePanelWidth: 96, buttonSize: 50, gap: 5, paddingX: 8, paddingTop: 20 };
         }
       } else if (width <= 390) {
-        config = {
-          boardScale: 0.7,
-          sidePanelWidth: 100,
-          buttonSize: 54,
-          gap: 5,
-          paddingX: 10,
-          paddingTop: 25,
-        };
+        config = { boardScale: 0.7, sidePanelWidth: 100, buttonSize: 54, gap: 5, paddingX: 10, paddingTop: 25 };
       } else if (width <= 414) {
-        config = {
-          boardScale: 0.75,
-          sidePanelWidth: 104,
-          buttonSize: 56,
-          gap: 5,
-          paddingX: 12,
-          paddingTop: 30,
-        };
+        config = { boardScale: 0.75, sidePanelWidth: 104, buttonSize: 56, gap: 5, paddingX: 12, paddingTop: 30 };
       } else if (width <= 768) {
         if (aspectRatio < 1.0) {
-          config = {
-            boardScale: 0.6,
-            sidePanelWidth: 108,
-            buttonSize: 60,
-            gap: 5,
-            paddingX: 16,
-            paddingTop: 20,
-          };
+          config = { boardScale: 0.6, sidePanelWidth: 108, buttonSize: 60, gap: 5, paddingX: 16, paddingTop: 20 };
         } else {
-          config = {
-            boardScale: 0.85,
-            sidePanelWidth: 110,
-            buttonSize: 64,
-            gap: 5,
-            paddingX: 16,
-            paddingTop: 30,
-          };
+          config = { boardScale: 0.85, sidePanelWidth: 110, buttonSize: 64, gap: 5, paddingX: 16, paddingTop: 30 };
         }
       } else {
-        config = {
-          boardScale: 0.9,
-          sidePanelWidth: 112,
-          buttonSize: 68,
-          gap: 5,
-          paddingX: 20,
-          paddingTop: 30,
-        };
+        config = { boardScale: 0.9, sidePanelWidth: 112, buttonSize: 68, gap: 5, paddingX: 20, paddingTop: 30 };
       }
 
       setLayoutConfig(config);
@@ -392,55 +343,84 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
   }, [gameOver, isPaused, level, gameStarted, currentPiece]);
 
-  const saveScoreToLeaderboard = async (finalScore: number) => {
-    if (!currentUserAddress) return;
+  const saveScoreToLeaderboard = useCallback(
+    async (finalScore: number) => {
+      if (!currentUserAddress) return;
 
-    try {
-      const entry = {
-        address: currentUserAddress,
-        username: formatAddress(currentUserAddress),
-        displayName: formatAddress(currentUserAddress),
-        pfpUrl: '',
-        score: finalScore,
-        level,
-        lines,
-        timestamp: Date.now(),
-      };
+      try {
+        const entry = {
+          address: currentUserAddress,
+          username: formatAddress(currentUserAddress),
+          displayName: formatAddress(currentUserAddress),
+          pfpUrl: '',
+          score: finalScore,
+          level,
+          lines,
+          timestamp: Date.now(),
+        };
 
-      await fetch('/api/leaderboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-      });
-    } catch (error) {
-      console.error('Failed to save score:', error);
-    }
-  };
+        await fetch('/api/leaderboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry),
+        });
+      } catch (error) {
+        console.error('Failed to save score:', error);
+      }
+    },
+    [currentUserAddress, level, lines]
+  );
 
-  const saveScoreToHistory = async (finalScore: number) => {
-    if (!currentUserAddress) return;
+  const saveScoreToHistory = useCallback(
+    async (finalScore: number) => {
+      if (!currentUserAddress) return;
 
-    try {
-      const entry = {
-        address: currentUserAddress,
-        username: formatAddress(currentUserAddress),
-        displayName: formatAddress(currentUserAddress),
-        pfpUrl: '',
-        score: finalScore,
-        level,
-        lines,
-        timestamp: Date.now(),
-      };
+      try {
+        const entry = {
+          address: currentUserAddress,
+          username: formatAddress(currentUserAddress),
+          displayName: formatAddress(currentUserAddress),
+          pfpUrl: '',
+          score: finalScore,
+          level,
+          lines,
+          timestamp: Date.now(),
+        };
 
-      await fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-      });
-    } catch (error) {
-      console.error('Failed to save history:', error);
-    }
-  };
+        await fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry),
+        });
+      } catch (error) {
+        console.error('Failed to save history:', error);
+      }
+    },
+    [currentUserAddress, level, lines]
+  );
+
+  const finalizeGameOver = useCallback(
+    async (finalScore: number) => {
+      setGameOver(true);
+
+      try {
+        await Promise.all([
+          saveScoreToLeaderboard(finalScore),
+          saveScoreToHistory(finalScore),
+        ]);
+      } catch (error) {
+        console.error('Failed to finalize game over:', error);
+      }
+
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+        bgmAudioRef.current.currentTime = 0;
+      }
+
+      onGameOver?.(finalScore);
+    },
+    [onGameOver, saveScoreToLeaderboard, saveScoreToHistory]
+  );
 
   const lockPiece = useCallback(
     (lockPosition: Position) => {
@@ -479,16 +459,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       const newNext = getRandomTetromino();
 
       if (checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
-        setGameOver(true);
-        saveScoreToLeaderboard(newScore);
-        saveScoreToHistory(newScore);
-
-        if (bgmAudioRef.current) {
-          bgmAudioRef.current.pause();
-          bgmAudioRef.current.currentTime = 0;
-        }
-
-        onGameOver?.(newScore);
+        void finalizeGameOver(newScore);
         return;
       }
 
@@ -497,7 +468,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       setPosition({ x: 3, y: 0 });
       setRotationState(0);
     },
-    [board, currentPiece, nextPiece, level, score, lines, onGameOver, currentUserAddress]
+    [board, currentPiece, nextPiece, level, score, finalizeGameOver]
   );
 
   useEffect(() => {
@@ -622,16 +593,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     const newNext = getRandomTetromino();
 
     if (newPiece && checkCollision(newBoard, newPiece, { x: 0, y: 0 })) {
-      setGameOver(true);
-      saveScoreToLeaderboard(newScore);
-      saveScoreToHistory(newScore);
-
-      if (bgmAudioRef.current) {
-        bgmAudioRef.current.pause();
-        bgmAudioRef.current.currentTime = 0;
-      }
-
-      onGameOver?.(newScore);
+      void finalizeGameOver(newScore);
       return;
     }
 
@@ -639,7 +601,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     setNextPiece(newNext);
     setPosition({ x: 3, y: 0 });
     setRotationState(0);
-  }, [board, currentPiece, nextPiece, position, isPaused, score, level, onGameOver, currentUserAddress, lines]);
+  }, [board, currentPiece, nextPiece, position, isPaused, score, level, finalizeGameOver]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
@@ -734,8 +696,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                   style={{
                     width: 15,
                     height: 15,
-                    backgroundColor:
-                      cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
+                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
                     border: cell === 1 ? '1px solid #444' : 'none',
                     borderRadius: '1px',
                     position: 'relative',
