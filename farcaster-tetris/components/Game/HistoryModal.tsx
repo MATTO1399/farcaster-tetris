@@ -17,31 +17,87 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
 }) => {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   useEffect(() => {
-    if (isOpen && currentUserAddress) {
-      fetchHistory();
-    } else if (isOpen) {
-      setHistory([]);
-    }
+    if (!isOpen) return;
+
+    const resolveAddress = async () => {
+      setErrorMessage('');
+
+      if (currentUserAddress) {
+        setResolvedAddress(currentUserAddress.toLowerCase());
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/siwe/me', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          setResolvedAddress(null);
+          return;
+        }
+
+        const data = await response.json();
+        if (data?.authenticated && typeof data?.address === 'string') {
+          setResolvedAddress(data.address.toLowerCase());
+        } else {
+          setResolvedAddress(null);
+        }
+      } catch (error) {
+        console.error('Failed to resolve session address:', error);
+        setResolvedAddress(null);
+      }
+    };
+
+    void resolveAddress();
   }, [isOpen, currentUserAddress]);
 
-  const fetchHistory = async () => {
-    if (!currentUserAddress) return;
+  useEffect(() => {
+    if (!isOpen) return;
 
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/history?address=${currentUserAddress}`);
-      if (response.ok) {
-        const data = await response.json();
-        setHistory(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch history:', error);
-    } finally {
-      setLoading(false);
+    if (!resolvedAddress) {
+      setHistory([]);
+      return;
     }
-  };
+
+    const fetchHistory = async () => {
+      setLoading(true);
+      setErrorMessage('');
+
+      try {
+        const response = await fetch(
+          `/api/history?address=${encodeURIComponent(resolvedAddress)}`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+          }
+        );
+
+        if (!response.ok) {
+          const text = await response.text();
+          setErrorMessage(text || '履歴の取得に失敗しました');
+          setHistory([]);
+          return;
+        }
+
+        const data = await response.json();
+        setHistory(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to fetch history:', error);
+        setErrorMessage('履歴の取得に失敗しました');
+        setHistory([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchHistory();
+  }, [isOpen, resolvedAddress]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -80,9 +136,17 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
           </button>
         </div>
 
-        {loading ? (
+        {!resolvedAddress ? (
+          <div className="text-center py-8">
+            <div className="text-gray-300">ウォレット接続後の履歴を表示します</div>
+          </div>
+        ) : loading ? (
           <div className="text-center py-8">
             <div className="text-purple-300">読み込み中...</div>
+          </div>
+        ) : errorMessage ? (
+          <div className="text-center py-8">
+            <div className="text-red-300 whitespace-pre-wrap break-all">{errorMessage}</div>
           </div>
         ) : history.length === 0 ? (
           <div className="text-center py-8">
@@ -123,7 +187,9 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
                   <div className="grid grid-cols-3 gap-2 mt-3">
                     <div className="bg-purple-600/20 rounded-lg p-2 text-center">
                       <div className="text-xs text-purple-300">スコア</div>
-                      <div className="text-lg font-bold text-white">{entry.score.toLocaleString()}</div>
+                      <div className="text-lg font-bold text-white">
+                        {entry.score.toLocaleString()}
+                      </div>
                     </div>
                     <div className="bg-blue-600/20 rounded-lg p-2 text-center">
                       <div className="text-xs text-blue-300">レベル</div>

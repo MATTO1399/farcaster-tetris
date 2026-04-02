@@ -764,7 +764,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           username={address ? formatAddress(address) : undefined}
         />
         <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
-        <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} />
+        <HistoryModal
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          currentUserAddress={address?.toLowerCase()}
+        />
       </>
     );
   }
@@ -992,7 +996,11 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       </div>
 
       <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
-      <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} />
+      <HistoryModal
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        currentUserAddress={address?.toLowerCase()}
+      />
     </div>
   );
 };

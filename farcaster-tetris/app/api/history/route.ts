@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveHistory, getHistory, type HistoryEntry } from '../../../lib/history';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const entry: HistoryEntry = await request.json();
@@ -38,7 +40,11 @@ export async function GET(request: NextRequest) {
 
     const history = await getHistory(address);
 
-    return NextResponse.json(history);
+    return NextResponse.json(history, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
+    });
   } catch (error) {
     console.error('Failed to get history:', error);
     return NextResponse.json(
