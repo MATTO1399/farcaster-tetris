@@ -74,6 +74,41 @@ function walletLabelById(id: WalletId) {
 
 function safeMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string') return error;
+
+  if (error && typeof error === 'object') {
+    const e = error as {
+      message?: unknown;
+      shortMessage?: unknown;
+      details?: unknown;
+      code?: unknown;
+      cause?: unknown;
+    };
+
+    const parts = [
+      typeof e.message === 'string' ? e.message : null,
+      typeof e.shortMessage === 'string' ? e.shortMessage : null,
+      typeof e.details === 'string' ? e.details : null,
+      e.code !== undefined ? `code: ${String(e.code)}` : null,
+    ].filter(Boolean);
+
+    if (parts.length > 0) return parts.join('\n');
+
+    if (e.cause && typeof e.cause === 'object') {
+      try {
+        return JSON.stringify(e.cause);
+      } catch {
+        // noop
+      }
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      // noop
+    }
+  }
+
   return '不明なエラーが発生しました。';
 }
 
