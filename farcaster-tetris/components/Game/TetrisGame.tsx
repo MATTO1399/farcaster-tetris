@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { useAccount } from 'wagmi';
 import {
@@ -30,6 +30,21 @@ interface LayoutConfig {
   gap: number;
   paddingX: number;
   paddingTop: number;
+  compact: boolean;
+  ultraCompact: boolean;
+  boardPanelGap: number;
+  panelGap: number;
+  controlsMaxWidth: number;
+  titleSize: number;
+  titleMarginBottom: number;
+  nextCellSize: number;
+  cardPaddingY: number;
+  cardPaddingX: number;
+  pauseButtonHeight: number;
+  labelFontSize: number;
+  valueFontSize: number;
+  panelBorderRadius: number;
+  sectionGap: number;
 }
 
 type RotationState = 0 | 1 | 2 | 3;
@@ -240,10 +255,12 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   useEffect(() => {
     const setAppHeight = () => {
-      const h = window.visualViewport?.height ?? window.innerHeight;
+      const vv = window.visualViewport;
+      const h = Math.round(vv?.height ?? window.innerHeight);
+      const w = Math.round(vv?.width ?? window.innerWidth);
+
       document.documentElement.style.setProperty('--app-height', `${h}px`);
 
-      const w = window.innerWidth;
       const ratio = w ? h / w : 0;
       setViewport({ w, h, ratio });
     };
@@ -262,65 +279,72 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     };
   }, []);
 
-  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
-    boardScale: 0.72,
-    sidePanelWidth: 104,
-    buttonSize: 56,
-    gap: 5,
-    paddingX: 12,
-    paddingTop: 30,
-  });
+  const layoutConfig = useMemo<LayoutConfig>(() => {
+    const vw = viewport.w || 390;
+    const vh = viewport.h || 844;
 
-  useEffect(() => {
-    const calculateLayout = () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      const aspectRatio = height / width;
+    const widthScale = clamp((vw - 24) / 430, 0.72, 1);
+    const heightScale = clamp((vh - 24) / 920, 0.66, 1);
 
-      let config: LayoutConfig;
+    const isNarrowScreen = vw <= 390;
+    const isShortScreen = vh <= 760;
+    const isVeryShortScreen = vh <= 700;
+    const isLandscapeish = vh / vw < 1.1;
 
-      if (width <= 375) {
-        if (aspectRatio > 2.0) {
-          config = { boardScale: 0.68, sidePanelWidth: 96, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };
-        } else {
-          config = { boardScale: 0.65, sidePanelWidth: 96, buttonSize: 50, gap: 5, paddingX: 8, paddingTop: 20 };
-        }
-      } else if (width <= 390) {
-        config = { boardScale: 0.7, sidePanelWidth: 100, buttonSize: 54, gap: 5, paddingX: 10, paddingTop: 25 };
-      } else if (width <= 414) {
-        config = { boardScale: 0.75, sidePanelWidth: 104, buttonSize: 56, gap: 5, paddingX: 12, paddingTop: 30 };
-      } else if (width <= 768) {
-        if (aspectRatio < 1.0) {
-          config = { boardScale: 0.6, sidePanelWidth: 108, buttonSize: 60, gap: 5, paddingX: 16, paddingTop: 20 };
-        } else {
-          config = { boardScale: 0.85, sidePanelWidth: 110, buttonSize: 64, gap: 5, paddingX: 16, paddingTop: 30 };
-        }
-      } else {
-        config = { boardScale: 0.9, sidePanelWidth: 112, buttonSize: 68, gap: 5, paddingX: 20, paddingTop: 30 };
-      }
+    let fitScale = Math.min(widthScale, heightScale);
 
-      setLayoutConfig(config);
+    if (isShortScreen) fitScale *= 0.96;
+    if (isVeryShortScreen) fitScale *= 0.93;
+    if (isLandscapeish) fitScale *= 0.9;
+
+    fitScale = clamp(fitScale, 0.58, 1);
+
+    return {
+      boardScale: fitScale,
+      sidePanelWidth: clamp(Math.round(112 * fitScale), 88, 112),
+      buttonSize: clamp(Math.round(64 * fitScale), 42, 68),
+      gap: clamp(Math.round(8 * fitScale), 4, 10),
+      paddingX: isNarrowScreen ? 8 : 12,
+      paddingTop: isVeryShortScreen ? 6 : isShortScreen ? 10 : 14,
+      compact: isShortScreen,
+      ultraCompact: isVeryShortScreen || isLandscapeish,
+      boardPanelGap: clamp(Math.round(10 * fitScale), 4, 10),
+      panelGap: clamp(Math.round(8 * fitScale), 4, 10),
+      controlsMaxWidth: clamp(Math.round(vw - 24), 220, 320),
+      titleSize: clamp(Math.round(36 * fitScale), 24, 40),
+      titleMarginBottom: isVeryShortScreen ? 8 : 14,
+      nextCellSize: clamp(Math.round(18 * fitScale), 12, 18),
+      cardPaddingY: isVeryShortScreen ? 8 : isShortScreen ? 10 : 12,
+      cardPaddingX: isVeryShortScreen ? 8 : 10,
+      pauseButtonHeight: clamp(Math.round(52 * fitScale), 40, 56),
+      labelFontSize: clamp(Math.round(12 * fitScale), 10, 12),
+      valueFontSize: clamp(Math.round(22 * fitScale), 16, 22),
+      panelBorderRadius: isVeryShortScreen ? 12 : 14,
+      sectionGap: clamp(Math.round(10 * fitScale), 6, 12),
     };
-
-    calculateLayout();
-    window.addEventListener('resize', calculateLayout);
-    window.addEventListener('orientationchange', calculateLayout);
-    return () => {
-      window.removeEventListener('resize', calculateLayout);
-      window.removeEventListener('orientationchange', calculateLayout);
-    };
-  }, []);
+  }, [viewport.w, viewport.h]);
 
   const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);
   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
   const shouldTweakAndroidSpacing =
-    androidLike && viewport.w <= 450 && viewport.ratio >= 1.85;
+    androidLike &&
+    viewport.w <= 450 &&
+    viewport.ratio >= 1.85 &&
+    !layoutConfig.ultraCompact;
 
   const androidPushPx = shouldTweakAndroidSpacing
-    ? Math.round(clamp((viewport.h - 680) * 0.7, 16, 74))
+    ? Math.round(clamp((viewport.h - 680) * 0.4, 8, 32))
     : 0;
+
+  const controlButtonBaseStyle: React.CSSProperties = {
+    width: `${layoutConfig.buttonSize}px`,
+    height: `${layoutConfig.buttonSize}px`,
+    minWidth: `${layoutConfig.buttonSize}px`,
+    minHeight: `${layoutConfig.buttonSize}px`,
+    borderRadius: `${Math.max(10, Math.round(layoutConfig.buttonSize * 0.18))}px`,
+  };
 
   useEffect(() => {
     if (gameOver || isPaused || !gameStarted || !currentPiece) {
@@ -684,9 +708,17 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const renderNextPiece = () => {
     if (!nextPiece) return null;
     const isOjamaNext = nextPiece.isOjama;
+    const previewCell = layoutConfig.nextCellSize;
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: `${previewCell * 4}px`,
+        }}
+      >
         <div style={{ display: 'inline-block', position: 'relative' }}>
           {nextPiece.shape.map((row, y) => (
             <div key={y} style={{ display: 'flex' }}>
@@ -694,9 +726,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                 <div
                   key={`${y}-${x}`}
                   style={{
-                    width: 15,
-                    height: 15,
-                    backgroundColor: cell === 1 ? (isOjamaNext ? 'transparent' : getTetrominoColor(nextPiece.type)) : 'transparent',
+                    width: previewCell,
+                    height: previewCell,
+                    backgroundColor:
+                      cell === 1
+                        ? isOjamaNext
+                          ? 'transparent'
+                          : getTetrominoColor(nextPiece.type)
+                        : 'transparent',
                     border: cell === 1 ? '1px solid #444' : 'none',
                     borderRadius: '1px',
                     position: 'relative',
@@ -707,7 +744,16 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           ))}
 
           {isOjamaNext && (
-            <div style={{ position: 'absolute', top: '-1px', left: '-1px', width: '32px', height: '32px', pointerEvents: 'none' }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: '-1px',
+                left: '-1px',
+                width: `${previewCell * 2 + 2}px`,
+                height: `${previewCell * 2 + 2}px`,
+                pointerEvents: 'none',
+              }}
+            >
               <Image src="/ojama-block.png" alt="Ojama Block" fill style={{ objectFit: 'cover' }} unoptimized />
             </div>
           )}
@@ -774,6 +820,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                     borderRadius: '2px',
                     position: 'relative',
                     overflow: 'visible',
+                    boxSizing: 'content-box',
                   }}
                 >
                   {isOjamaTopLeft && (
@@ -821,13 +868,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   return (
     <div
-      className="flex flex-col w-full overflow-hidden bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
+      className="w-full overflow-x-hidden overflow-y-auto bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800"
       style={{
-        height: 'var(--app-height, 100dvh)',
+        minHeight: 'var(--app-height, 100dvh)',
         paddingTop: 'env(safe-area-inset-top)',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         WebkitTouchCallout: 'none',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       {DEBUG_OVERLAY && (
@@ -855,33 +903,54 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       )}
 
       <div
-        className="flex-1 min-h-0 w-full overflow-y-auto flex flex-col items-center"
+        className="mx-auto flex w-full flex-col items-center"
         style={{
+          maxWidth: 520,
+          paddingLeft: `${layoutConfig.paddingX}px`,
+          paddingRight: `${layoutConfig.paddingX}px`,
           paddingTop: `${layoutConfig.paddingTop}px`,
-          paddingBottom: '12px',
+          paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
+          gap: `${layoutConfig.sectionGap}px`,
+          boxSizing: 'border-box',
         }}
       >
-        <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-white drop-shadow-lg tracking-wider">FARTETRIS</h1>
+        <div className="text-center" style={{ marginBottom: `${layoutConfig.titleMarginBottom}px` }}>
+          <h1
+            className="font-bold text-white drop-shadow-lg tracking-wider"
+            style={{
+              fontSize: `${layoutConfig.titleSize}px`,
+              lineHeight: 1.05,
+            }}
+          >
+            FARTETRIS
+          </h1>
         </div>
 
         {androidPushPx > 0 ? <div style={{ height: androidPushPx }} /> : null}
 
         <div
-          className="flex items-center justify-center w-full max-w-md"
+          className="flex w-full items-start justify-center"
           style={{
-            gap: '6px',
-            paddingLeft: `${layoutConfig.paddingX}px`,
-            paddingRight: `${layoutConfig.paddingX}px`,
+            gap: `${layoutConfig.boardPanelGap}px`,
           }}
         >
-          <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative">
+          <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative shrink-0">
             {renderBoard()}
             {gameOver && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg z-30">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-red-500 mb-4">GAME OVER</p>
-                  <p className="text-xl text-white mb-4">Score: {score}</p>
+                <div className="text-center px-3">
+                  <p
+                    className="font-bold text-red-500 mb-4"
+                    style={{ fontSize: layoutConfig.ultraCompact ? '22px' : '30px' }}
+                  >
+                    GAME OVER
+                  </p>
+                  <p
+                    className="text-white mb-4"
+                    style={{ fontSize: layoutConfig.ultraCompact ? '16px' : '20px' }}
+                  >
+                    Score: {score}
+                  </p>
                   <div className="flex flex-col gap-3 w-full">
                     <button
                       onClick={startNewGame}
@@ -902,47 +971,100 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           </div>
 
           <div
-            className="flex flex-col gap-2"
-            style={{ width: `${layoutConfig.sidePanelWidth}px` }}
+            className="flex flex-col shrink-0"
+            style={{
+              width: `${layoutConfig.sidePanelWidth}px`,
+              gap: `${layoutConfig.panelGap}px`,
+            }}
           >
-            <div className="bg-[#2c2363] rounded-[14px] px-3 py-3 text-center shadow-md">
-              <p className="text-[11px] text-[#cbbcff] mb-1 font-semibold tracking-wide">
+            <div
+              className="bg-[#2c2363] text-center shadow-md"
+              style={{
+                borderRadius: `${layoutConfig.panelBorderRadius}px`,
+                padding: `${layoutConfig.cardPaddingY}px ${layoutConfig.cardPaddingX}px`,
+              }}
+            >
+              <p
+                className="text-[#cbbcff] mb-1 font-semibold tracking-wide"
+                style={{ fontSize: `${layoutConfig.labelFontSize}px` }}
+              >
                 スコア
               </p>
-              <p className="text-[20px] font-extrabold text-white leading-none">
+              <p
+                className="font-extrabold text-white leading-none"
+                style={{ fontSize: `${layoutConfig.valueFontSize}px` }}
+              >
                 {score}
               </p>
             </div>
 
-            <div className="bg-[#2c2363] rounded-[14px] px-3 py-3 text-center shadow-md">
-              <p className="text-[11px] text-[#cbbcff] mb-1 font-semibold tracking-wide">
+            <div
+              className="bg-[#2c2363] text-center shadow-md"
+              style={{
+                borderRadius: `${layoutConfig.panelBorderRadius}px`,
+                padding: `${layoutConfig.cardPaddingY}px ${layoutConfig.cardPaddingX}px`,
+              }}
+            >
+              <p
+                className="text-[#cbbcff] mb-1 font-semibold tracking-wide"
+                style={{ fontSize: `${layoutConfig.labelFontSize}px` }}
+              >
                 レベル
               </p>
-              <p className="text-[20px] font-extrabold text-white leading-none mb-3">
+              <p
+                className="font-extrabold text-white leading-none"
+                style={{
+                  fontSize: `${layoutConfig.valueFontSize}px`,
+                  marginBottom: layoutConfig.compact ? '8px' : '12px',
+                }}
+              >
                 {level}
               </p>
 
-              <p className="text-[11px] text-[#cbbcff] mb-1 font-semibold tracking-wide">
+              <p
+                className="text-[#cbbcff] mb-1 font-semibold tracking-wide"
+                style={{ fontSize: `${layoutConfig.labelFontSize}px` }}
+              >
                 ライン
               </p>
-              <p className="text-[20px] font-extrabold text-white leading-none">
+              <p
+                className="font-extrabold text-white leading-none"
+                style={{ fontSize: `${layoutConfig.valueFontSize}px` }}
+              >
                 {lines}
               </p>
             </div>
 
-            <div className="bg-[#2c2363] rounded-[14px] px-3 py-3 text-center shadow-md">
-              <p className="text-[11px] text-[#cbbcff] mb-2 font-semibold tracking-wide">
+            <div
+              className="bg-[#2c2363] text-center shadow-md"
+              style={{
+                borderRadius: `${layoutConfig.panelBorderRadius}px`,
+                padding: `${layoutConfig.cardPaddingY}px ${layoutConfig.cardPaddingX}px`,
+              }}
+            >
+              <p
+                className="text-[#cbbcff] mb-2 font-semibold tracking-wide"
+                style={{ fontSize: `${layoutConfig.labelFontSize}px` }}
+              >
                 Next
               </p>
-              <div className="flex items-center justify-center min-h-[56px]">
+              <div
+                className="flex items-center justify-center"
+                style={{
+                  minHeight: `${layoutConfig.nextCellSize * 4}px`,
+                }}
+              >
                 {renderNextPiece()}
               </div>
             </div>
 
             <button
               onClick={() => setIsPaused((prev) => !prev)}
-              className="w-full rounded-[14px] py-3 text-white font-extrabold text-[14px] shadow-md"
+              className="w-full text-white font-extrabold shadow-md"
               style={{
+                height: `${layoutConfig.pauseButtonHeight}px`,
+                borderRadius: `${layoutConfig.panelBorderRadius}px`,
+                fontSize: `${Math.max(12, Math.round(layoutConfig.buttonSize * 0.24))}px`,
                 background: 'linear-gradient(90deg, #f59e0b 0%, #f97316 100%)',
               }}
             >
@@ -950,94 +1072,99 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
             </button>
           </div>
         </div>
-      </div>
 
-      <div
-        className="shrink-0 w-full flex flex-col items-center bg-gradient-to-t from-purple-900/95 to-transparent backdrop-blur-sm py-2"
-        style={{
-          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))',
-          gap: '6px',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          WebkitTouchCallout: 'none',
-        }}
-      >
-        <div className="flex justify-center" style={{ gap: `${layoutConfig.gap}px` }}>
-          <button
-            onClick={rotateCounterClockwise}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
+        <div
+          className="w-full flex flex-col items-center"
+          style={{
+            gap: `${layoutConfig.gap}px`,
+            marginTop: `${layoutConfig.compact ? 0 : 2}px`,
+          }}
+        >
+          <div
+            className="flex justify-center"
             style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              gap: `${layoutConfig.gap}px`,
+              width: '100%',
+              maxWidth: `${layoutConfig.controlsMaxWidth}px`,
             }}
           >
-            ↺
-          </button>
-          <button
-            onClick={rotate}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            ↻
-          </button>
-          <button
-            onClick={hardDrop}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.28}px`,
-            }}
-          >
-            DROP
-          </button>
-        </div>
+            <button
+              onClick={rotateCounterClockwise}
+              disabled={!gameStarted || gameOver || isPaused}
+              className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold transition-colors flex-shrink-0"
+              style={{
+                ...controlButtonBaseStyle,
+                fontSize: `${Math.max(16, layoutConfig.buttonSize * 0.35)}px`,
+              }}
+            >
+              ↺
+            </button>
+            <button
+              onClick={rotate}
+              disabled={!gameStarted || gameOver || isPaused}
+              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold transition-colors flex-shrink-0"
+              style={{
+                ...controlButtonBaseStyle,
+                fontSize: `${Math.max(16, layoutConfig.buttonSize * 0.35)}px`,
+              }}
+            >
+              ↻
+            </button>
+            <button
+              onClick={hardDrop}
+              disabled={!gameStarted || gameOver || isPaused}
+              className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold transition-colors flex-shrink-0"
+              style={{
+                ...controlButtonBaseStyle,
+                fontSize: `${Math.max(13, layoutConfig.buttonSize * 0.28)}px`,
+              }}
+            >
+              DROP
+            </button>
+          </div>
 
-        <div className="flex justify-center" style={{ gap: `${layoutConfig.gap}px` }}>
-          <button
-            onClick={moveLeft}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
+          <div
+            className="flex justify-center"
             style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
+              gap: `${layoutConfig.gap}px`,
+              width: '100%',
+              maxWidth: `${layoutConfig.controlsMaxWidth}px`,
             }}
           >
-            ←
-          </button>
-          <button
-            onClick={moveDown}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            ↓
-          </button>
-          <button
-            onClick={moveRight}
-            disabled={!gameStarted || gameOver || isPaused}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white rounded-lg font-bold transition-colors flex-shrink-0"
-            style={{
-              width: `${layoutConfig.buttonSize}px`,
-              height: `${layoutConfig.buttonSize}px`,
-              fontSize: `${layoutConfig.buttonSize * 0.35}px`,
-            }}
-          >
-            →
-          </button>
+            <button
+              onClick={moveLeft}
+              disabled={!gameStarted || gameOver || isPaused}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold transition-colors flex-shrink-0"
+              style={{
+                ...controlButtonBaseStyle,
+                fontSize: `${Math.max(16, layoutConfig.buttonSize * 0.35)}px`,
+              }}
+            >
+              ←
+            </button>
+            <button
+              onClick={moveDown}
+              disabled={!gameStarted || gameOver || isPaused}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold transition-colors flex-shrink-0"
+              style={{
+                ...controlButtonBaseStyle,
+                fontSize: `${Math.max(16, layoutConfig.buttonSize * 0.35)}px`,
+              }}
+            >
+              ↓
+            </button>
+            <button
+              onClick={moveRight}
+              disabled={!gameStarted || gameOver || isPaused}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold transition-colors flex-shrink-0"
+              style={{
+                ...controlButtonBaseStyle,
+                fontSize: `${Math.max(16, layoutConfig.buttonSize * 0.35)}px`,
+              }}
+            >
+              →
+            </button>
+          </div>
         </div>
       </div>
 
