@@ -8,7 +8,7 @@ interface MintNFTProps { address: string; score: number; }
 
 const MintNFT: React.FC<MintNFTProps> = ({ address, score }) => {
   const publicClient = usePublicClient();
-  const { connector } = useAccount(); // ★現在の接続コネクターを取得
+  const { connector } = useAccount();
   const { writeContract, data: hash, isPending: isMinting } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isMintSuccess } = useWaitForTransactionReceipt({ hash });
   
@@ -17,7 +17,6 @@ const MintNFT: React.FC<MintNFTProps> = ({ address, score }) => {
 
   const SCORE_THRESHOLDS = [10000, 7500, 5000, 3000, 2000, 1000, 100];
 
-  // 所持チェックロジック (既存のまま保持)
   const checkOwnership = useCallback(async () => {
     if (!address || !publicClient) return;
     setLoading(true);
@@ -46,9 +45,14 @@ const MintNFT: React.FC<MintNFTProps> = ({ address, score }) => {
   useEffect(() => { checkOwnership(); }, [checkOwnership]);
 
   const handleMint = async () => {
-    console.log("Attempting mint with Rabby/Connector:", connector?.name);
-    if (!nftToMint) return;
-    
+    console.log("Button Clicked. Target NFT:", nftToMint);
+    const nftAddress = process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS;
+
+    if (!nftAddress) {
+      alert("エラー: NFTのアドレス(環境変数)が読み込めていません。Vercelの設定を確認してください。");
+      return;
+    }
+
     try {
       const res = await fetch('/api/nft/claim', {
         method: 'POST',
@@ -56,19 +60,35 @@ const MintNFT: React.FC<MintNFTProps> = ({ address, score }) => {
         body: JSON.stringify({ address, score, requestedNft: nftToMint })
       });
       const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      if (data.error) { alert(`条件エラー: ${data.error}`); return; }
 
-      // ★ 修正ポイント: connectorを明示的に渡すことで、Rabbyの競合を回避します
-      writeContract({
-        connector: connector, // ここが重要
-        address: process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS as `0x${string}`,
-        abi: [{ "inputs": [{ "name": "campaignId", "type": "bytes32" }, { "name": "deadline", "type": "uint256" }, { "name": "signature", "type": "bytes" }], "name": "claim", "outputs": [], "stateMutability": "nonpayable", "type": "function" }],
-        functionName: 'claim',
-        args: [data.campaignId, BigInt(data.deadline), data.signature],
-      });
+      // ★ 最後の手段: Wagmiを使わずブラウザのwindow.ethereumを直接叩く
+      const provider = (window as any).ethereum;
+      if (provider) {
+        console.log("Direct wallet call initiated.");
+        
+        // 1. まずはWagmiの標準方式を試す
+        writeContract({
+          connector,
+          address: nftAddress as `0x${string}`,
+          abi: [{ "inputs": [{ "name": "campaignId", "type": "bytes32" }, { "name": "deadline", "type": "uint256" }, { "name": "signature", "type": "bytes" }], "name": "claim", "outputs": [], "stateMutability": "nonpayable", "type": "function" }],
+          functionName: 'claim',
+          args: [data.campaignId, BigInt(data.deadline), data.signature],
+        });
+
+        // 2. 万が一、Wagmiが沈黙した時のための保険（アラート）
+        setTimeout(() => {
+          if (!isMinting) {
+            console.log("Wagmi seems silent. Checking provider directly...");
+          }
+        }, 2000);
+
+      } else {
+        alert("ウォレット（window.ethereum）が見つかりません。Rabbyの設定を確認してください。");
+      }
     } catch (error) {
-      console.error('Mint Technical Error:', error);
-      alert('ミントの呼び出しに失敗しました。Rabbyの承認画面が開いているか確認してください。');
+      console.error('Mint Error:', error);
+      alert('通信エラーが発生しました。');
     }
   };
 
@@ -77,10 +97,14 @@ const MintNFT: React.FC<MintNFTProps> = ({ address, score }) => {
 
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); handleMint(); }}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleMint();
+      }}
       disabled={isMinting || isConfirming}
       className="w-full py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-black rounded-full font-bold shadow-lg active:scale-95 cursor-pointer"
-      style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1000 }}
+      style={{ position: 'relative', zIndex: 9999, pointerEvents: 'auto' }}
     >
       {isMinting || isConfirming ? '承認待ち...' : `${nftToMint} をGET!`}
     </button>
