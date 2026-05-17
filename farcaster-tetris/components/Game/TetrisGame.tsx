@@ -194,7 +194,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   // ★ 変更: isConnected を取得
   const { address: wagmiAddress, isConnected } = useAccount();
   const [sessionAddress, setSessionAddress] = useState<string | null>(null);
-  const currentUserAddress = sessionAddress ?? wagmiAddress?.toLowerCase() ?? null;
+  const currentUserAddress = isConnected ? (sessionAddress ?? wagmiAddress?.toLowerCase() ?? null) : null;
 
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
