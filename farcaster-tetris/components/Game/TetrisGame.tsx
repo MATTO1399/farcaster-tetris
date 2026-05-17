@@ -260,6 +260,9 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const handleBackToMenu = () => { setGameStarted(false); setShowMenu(true); setGameOver(false); if (bgmAudioRef.current) { bgmAudioRef.current.pause(); bgmAudioRef.current.currentTime = 0; } };
 
+  const handleShowRanking = () => setShowLeaderboard(true);
+  const handleShowHistory = () => setShowHistory(true);
+
   // Renderロジック (既存)
   const renderNextPiece = () => {
     if (!nextPiece) return null;
