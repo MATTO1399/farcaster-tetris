@@ -10,6 +10,8 @@ interface GameMenuProps {
   onShowRanking: () => void;
   username?: string;
   pfpUrl?: string;
+  onSignedIn?: (address: string) => void;
+  onSignedOut?: () => void;
 }
 
 const GameMenu: React.FC<GameMenuProps> = ({
@@ -18,6 +20,8 @@ const GameMenu: React.FC<GameMenuProps> = ({
   onShowRanking,
   username,
   pfpUrl,
+  onSignedIn,
+  onSignedOut,
 }) => {
   return (
     <div
@@ -79,7 +83,7 @@ const GameMenu: React.FC<GameMenuProps> = ({
       </button>
 
       <div className="w-full max-w-sm mb-6">
-        <SiweSignInButton />
+        <SiweSignInButton onSignedIn={onSignedIn} onSignedOut={onSignedOut} />
       </div>
 
       <div className="flex gap-4 w-full max-w-sm">

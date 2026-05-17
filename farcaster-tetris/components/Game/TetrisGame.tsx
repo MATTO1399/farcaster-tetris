@@ -191,7 +191,7 @@ function formatAddress(address?: string) {
 }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  // wagmi の接続状態を取得
+  // wagmi の接続状態を取得（インジェクト系ウォレットは wagmi を経由しないので参考程度）
   const { address: wagmiAddress, isConnected } = useAccount();
   const [sessionAddress, setSessionAddress] = useState<string | null>(null);
 
@@ -219,45 +219,38 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
-  // 接続状態が変わったら /api/siwe/me を再取得する
-  // 切断された瞬間は sessionAddress を null にクリア（logout API は呼ばない）
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchSessionAddress = async () => {
-      try {
-        const response = await fetch('/api/siwe/me', {
-          method: 'GET',
-          cache: 'no-store',
-          credentials: 'include',
-        });
-
-        const data = await response.json();
-
-        if (!cancelled) {
-          if (data?.authenticated && typeof data?.address === 'string') {
-            setSessionAddress(data.address.toLowerCase());
-          } else {
-            setSessionAddress(null);
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setSessionAddress(null);
-        }
+  // ★ SIWE セッションを再取得する共通関数
+  const refreshSession = useCallback(async () => {
+    try {
+      const response = await fetch('/api/siwe/me', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (data?.authenticated && typeof data?.address === 'string') {
+        setSessionAddress(data.address.toLowerCase());
+      } else {
+        setSessionAddress(null);
       }
-    };
-
-    if (!isConnected) {
+    } catch {
       setSessionAddress(null);
     }
+  }, []);
 
-    void fetchSessionAddress();
+  // ★ SiweSignInButton からのコールバックハンドラ
+  const handleSignedIn = useCallback((address: string) => {
+    setSessionAddress(address.toLowerCase());
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [wagmiAddress, isConnected]);
+  const handleSignedOut = useCallback(() => {
+    setSessionAddress(null);
+  }, []);
+
+  // ★ 初回マウントと wagmi 状態の変化時に SIWE セッションを確認する
+  useEffect(() => {
+    void refreshSession();
+  }, [wagmiAddress, isConnected, refreshSession]);
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
@@ -868,6 +861,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           onShowHistory={handleShowHistory}
           onShowRanking={handleShowRanking}
           username={currentUserAddress ? formatAddress(currentUserAddress) : undefined}
+          onSignedIn={handleSignedIn}
+          onSignedOut={handleSignedOut}
         />
         <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
         <HistoryModal
