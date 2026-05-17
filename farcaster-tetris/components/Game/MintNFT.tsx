@@ -88,6 +88,7 @@ const MintNFT: React.FC<MintNFTProps> = ({ address, score }) => {
   useEffect(() => { checkOwnership(); }, [checkOwnership]);
 
   const handleMint = async () => {
+    console.log("handleMint started. Address:", address);
     if (!nftToMint) return;
     try {
       const res = await fetch('/api/nft/claim', {
