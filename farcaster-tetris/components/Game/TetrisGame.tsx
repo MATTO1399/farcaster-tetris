@@ -191,15 +191,12 @@ function formatAddress(address?: string) {
 }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  // ★ wagmi の接続状態を取得
+  // wagmi の接続状態を取得
   const { address: wagmiAddress, isConnected } = useAccount();
   const [sessionAddress, setSessionAddress] = useState<string | null>(null);
 
-  // ★ ウォレット接続中なら表示、切断中は null（Cookie が残っていても無視）
-  //    優先順位は wagmi → SIWE。これで接続直後の表示の遅れを防ぐ
-  const currentUserAddress = isConnected
-    ? (wagmiAddress?.toLowerCase() ?? sessionAddress ?? null)
-    : null;
+  // SIWE セッション優先、なければ wagmi のアドレス
+  const currentUserAddress = sessionAddress ?? wagmiAddress?.toLowerCase() ?? null;
 
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPiece, setCurrentPiece] = useState<Tetromino | null>(null);
@@ -222,78 +219,45 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
-  // ★ SIWE セッションを再取得する共通関数
-  const refreshSessionAddress = useCallback(async () => {
-    try {
-      const response = await fetch('/api/siwe/me', {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'include',
-      });
-      const data = await response.json();
-      if (data?.authenticated && typeof data?.address === 'string') {
-        setSessionAddress(data.address.toLowerCase());
-      } else {
-        setSessionAddress(null);
-      }
-    } catch {
-      setSessionAddress(null);
-    }
-  }, []);
-
-  // ★ サーバー側 SIWE セッションを破棄（切断時用、無ければ無視される）
-  const clearServerSession = useCallback(async () => {
-    try {
-      await fetch('/api/siwe/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch {
-      // logout エンドポイントが無い場合などは黙って無視
-    }
-  }, []);
-
-  // ★ 接続状態が変わったら /api/siwe/me を再取得
-  //   切断された瞬間は sessionAddress を null にし、サーバーセッションも破棄
+  // 接続状態が変わったら /api/siwe/me を再取得する
+  // 切断された瞬間は sessionAddress を null にクリア（logout API は呼ばない）
   useEffect(() => {
     let cancelled = false;
 
+    const fetchSessionAddress = async () => {
+      try {
+        const response = await fetch('/api/siwe/me', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'include',
+        });
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          if (data?.authenticated && typeof data?.address === 'string') {
+            setSessionAddress(data.address.toLowerCase());
+          } else {
+            setSessionAddress(null);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setSessionAddress(null);
+        }
+      }
+    };
+
     if (!isConnected) {
       setSessionAddress(null);
-      void clearServerSession();
-      return () => {
-        cancelled = true;
-      };
     }
 
-    (async () => {
-      if (cancelled) return;
-      await refreshSessionAddress();
-    })();
+    void fetchSessionAddress();
 
     return () => {
       cancelled = true;
     };
-  }, [wagmiAddress, isConnected, refreshSessionAddress, clearServerSession]);
-
-  // ★ タブが可視化されたとき／フォーカスが戻ったときにセッションを再確認
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && isConnected) {
-        void refreshSessionAddress();
-      }
-    };
-    const handleFocus = () => {
-      if (isConnected) void refreshSessionAddress();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [isConnected, refreshSessionAddress]);
+  }, [wagmiAddress, isConnected]);
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
