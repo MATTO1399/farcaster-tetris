@@ -15,7 +15,7 @@ export interface TetrisNFT$Type {
   readonly deployedLinkReferences: {};
   readonly immutableReferences: {};
   readonly inputSourceName: "project/contracts/TetrisNFT.sol";
-  readonly buildInfoId: "solc-0_8_24-7d83710e2da78a4563a2eacc2decd57ff32060be";
+  readonly buildInfoId: "solc-0_8_24-99d17abadf11401d85ba19665903d9c1b57061a3";
 };
 
 import "hardhat/types/artifacts";

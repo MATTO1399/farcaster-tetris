@@ -15,7 +15,7 @@ export interface FirstPlayNFT$Type {
   readonly deployedLinkReferences: {};
   readonly immutableReferences: {"5124":[{"length":32,"start":6325}],"5126":[{"length":32,"start":6283}],"5128":[{"length":32,"start":6241}],"5130":[{"length":32,"start":6406}],"5132":[{"length":32,"start":6446}],"5135":[{"length":32,"start":4531}],"5138":[{"length":32,"start":4576}],"9144":[{"length":32,"start":1122},{"length":32,"start":2332},{"length":32,"start":3455}]};
   readonly inputSourceName: "project/contracts/FirstPlayNFT.sol";
-  readonly buildInfoId: "solc-0_8_24-7d83710e2da78a4563a2eacc2decd57ff32060be";
+  readonly buildInfoId: "solc-0_8_24-99d17abadf11401d85ba19665903d9c1b57061a3";
 };
 
 import "hardhat/types/artifacts";
