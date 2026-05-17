@@ -191,7 +191,8 @@ function formatAddress(address?: string) {
 }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
-  const { address: wagmiAddress } = useAccount();
+  // ★ 変更: isConnected を取得
+  const { address: wagmiAddress, isConnected } = useAccount();
   const [sessionAddress, setSessionAddress] = useState<string | null>(null);
   const currentUserAddress = sessionAddress ?? wagmiAddress?.toLowerCase() ?? null;
 
@@ -216,6 +217,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
+  // ★ 変更: 接続状態が変わったら /api/siwe/me を再取得する
   useEffect(() => {
     let cancelled = false;
 
@@ -242,12 +244,16 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
       }
     };
 
+    if (!isConnected) {
+      setSessionAddress(null);
+    }
+
     void fetchSessionAddress();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [wagmiAddress, isConnected]);
 
   useEffect(() => {
     setAndroidLike(isAndroidLike());
