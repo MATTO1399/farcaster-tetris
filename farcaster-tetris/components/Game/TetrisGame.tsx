@@ -18,7 +18,7 @@ import type { Board, Tetromino, Position } from '../../utils/tetrisLogic';
 import GameMenu from './GameMenu';
 import LeaderboardModal from './LeaderboardModal';
 import HistoryModal from './HistoryModal';
-import MintNFT from './MintNFT'; // ★ MintNFTは別ファイルで保持
+import MintNFT from './MintNFT';
 
 interface TetrisGameProps {
   onGameOver?: (score: number) => void;
@@ -30,15 +30,11 @@ interface LayoutConfig {
 
 type RotationState = 0 | 1 | 2 | 3;
 
-const DEBUG_OVERLAY = false;
-
 // --- Kick Tables ---
 const SRS_KICK_TABLE: Record<string, Position[]> = { '0->1': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: -2 }, { x: -1, y: -2 }], '1->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: -1 }, { x: 0, y: 2 }, { x: 1, y: 2 }], '1->2': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: -1 }, { x: 0, y: 2 }, { x: 1, y: 2 }], '2->1': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: -2 }, { x: -1, y: -2 }], '2->3': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }], '3->2': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }], '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: 2 }], '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }] };
 const SRS_I_KICK_TABLE: Record<string, Position[]> = { '0->1': [{ x: 0, y: 0 }, { x: -2, y: 0 }, { x: 1, y: 0 }, { x: -2, y: -1 }, { x: 1, y: 2 }], '1->0': [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 1 }, { x: -1, y: -2 }], '1->2': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }], '2->1': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: -2, y: 0 }, { x: 1, y: -2 }, { x: -2, y: 1 }], '2->3': [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 1 }, { x: -1, y: -2 }], '3->2': [{ x: 0, y: 0 }, { x: -2, y: 0 }, { x: 1, y: 0 }, { x: -2, y: -1 }, { x: 1, y: 2 }], '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: -2, y: 0 }, { x: 1, y: -2 }, { x: -2, y: 1 }], '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }] };
 
 function clamp(n: number, min: number, max: number) { return Math.min(max, Math.max(min, n)); }
-function getUADataPlatform(): string { const nav: any = typeof navigator !== 'undefined' ? navigator : null; return String(nav?.userAgentData?.platform ?? nav?.platform ?? ''); }
-function isAndroidLike(): boolean { const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''; return /Android/i.test(ua) || /Android/i.test(getUADataPlatform()); }
 function formatAddress(address?: string) { if (!address) return ''; return `${address.slice(0, 6)}...${address.slice(-4)}`; }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
@@ -63,51 +59,42 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
-  const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
   const refreshSession = useCallback(async () => {
     try {
-      const response = await fetch('/api/siwe/me', { method: 'GET', cache: 'no-store', credentials: 'include' });
+      const response = await fetch('/api/siwe/me', { method: 'GET', cache: 'no-store' });
       const data = await response.json();
-      if (data?.authenticated && typeof data?.address === 'string') { setSessionAddress(data.address.toLowerCase()); } else { setSessionAddress(null); }
+      if (data?.authenticated && data?.address) setSessionAddress(data.address.toLowerCase());
+      else setSessionAddress(null);
     } catch { setSessionAddress(null); }
   }, []);
 
   useEffect(() => { void refreshSession(); }, [wagmiAddress, isConnected, refreshSession]);
-  useEffect(() => { setAndroidLike(isAndroidLike()); }, []);
 
   useEffect(() => {
     const setAppHeight = () => {
-      const vv = window.visualViewport;
-      const h = Math.round(vv?.height ?? window.innerHeight);
-      const w = Math.round(vv?.width ?? window.innerWidth);
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      const w = window.visualViewport?.width ?? window.innerWidth;
       document.documentElement.style.setProperty('--app-height', `${h}px`);
       setViewport({ w, h, ratio: w ? h / w : 0 });
     };
     setAppHeight();
-    window.visualViewport?.addEventListener('resize', setAppHeight);
     window.addEventListener('resize', setAppHeight);
-    return () => { window.visualViewport?.removeEventListener('resize', setAppHeight); window.removeEventListener('resize', setAppHeight); };
+    return () => window.removeEventListener('resize', setAppHeight);
   }, []);
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
     const vw = viewport.w || 390; const vh = viewport.h || 844;
-    const widthScale = clamp((vw - 24) / 430, 0.72, 1);
-    const heightScale = clamp((vh - 24) / 920, 0.66, 1);
-    const isNarrowScreen = vw <= 390; const isShortScreen = vh <= 760; const isVeryShortScreen = vh <= 700; const isLandscapeish = vh / vw < 1.1;
-    let fitScale = Math.min(widthScale, heightScale);
-    if (isShortScreen) fitScale *= 0.96; if (isVeryShortScreen) fitScale *= 0.93; if (isLandscapeish) fitScale *= 0.9;
-    fitScale = clamp(fitScale, 0.58, 1);
+    const fitScale = clamp(Math.min((vw - 24) / 430, (vh - 24) / 920), 0.58, 1);
     return {
-      boardScale: fitScale, sidePanelWidth: clamp(Math.round(112 * fitScale), 88, 112), buttonSize: clamp(Math.round(64 * fitScale), 42, 68), gap: clamp(Math.round(8 * fitScale), 4, 10), paddingX: isNarrowScreen ? 8 : 12, paddingTop: isVeryShortScreen ? 6 : isShortScreen ? 10 : 14, compact: isShortScreen, ultraCompact: isVeryShortScreen || isLandscapeish, boardPanelGap: clamp(Math.round(10 * fitScale), 4, 10), panelGap: clamp(Math.round(8 * fitScale), 4, 10), controlsMaxWidth: clamp(Math.round(vw - 24), 220, 320), titleSize: clamp(Math.round(36 * fitScale), 24, 40), titleMarginBottom: isVeryShortScreen ? 8 : 14, nextCellSize: clamp(Math.round(18 * fitScale), 12, 18), cardPaddingY: isVeryShortScreen ? 8 : isShortScreen ? 10 : 12, cardPaddingX: isVeryShortScreen ? 8 : 10, pauseButtonHeight: clamp(Math.round(52 * fitScale), 40, 56), labelFontSize: clamp(Math.round(12 * fitScale), 10, 12), valueFontSize: clamp(Math.round(22 * fitScale), 16, 22), panelBorderRadius: isVeryShortScreen ? 12 : 14, sectionGap: clamp(Math.round(10 * fitScale), 6, 12),
+      boardScale: fitScale, sidePanelWidth: Math.round(112 * fitScale), buttonSize: Math.round(64 * fitScale),
+      gap: 8, paddingX: 12, paddingTop: 14, compact: vh <= 760, ultraCompact: vh <= 700,
+      boardPanelGap: 10, panelGap: 8, controlsMaxWidth: 320, titleSize: Math.round(36 * fitScale),
+      titleMarginBottom: 14, nextCellSize: Math.round(18 * fitScale), cardPaddingY: 10, cardPaddingX: 10,
+      pauseButtonHeight: 52, labelFontSize: 12, valueFontSize: 22, panelBorderRadius: 14, sectionGap: 10,
     };
   }, [viewport]);
-
-  const shouldCenterOnDesktop = viewport.w >= 768 && viewport.h >= 700 && !layoutConfig.compact;
-  const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);
-  const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
-  const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
 
   const controlButtonBaseStyle: React.CSSProperties = {
     width: `${layoutConfig.buttonSize}px`, height: `${layoutConfig.buttonSize}px`,
@@ -125,7 +112,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) })
       ]);
     } catch (e) { console.error(e); }
-    if (bgmAudioRef.current) bgmAudioRef.current.pause();
+    if (bgmAudioRef.current) { bgmAudioRef.current.pause(); bgmAudioRef.current.currentTime = 0; }
     onGameOver?.(finalScore);
   }, [currentUserAddress, level, lines, onGameOver]);
 
@@ -152,25 +139,34 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
   }, [position, board, currentPiece, gameStarted, gameOver, isPaused, lockPiece]);
 
-  const moveLeft = useCallback(() => { if (!currentPiece) return; const n = { x: position.x - 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); }, [board, currentPiece, position]);
-  const moveRight = useCallback(() => { if (!currentPiece) return; const n = { x: position.x + 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); }, [board, currentPiece, position]);
-  const moveDown = useCallback(() => { if (!currentPiece) return; const n = { x: position.x, y: position.y + 1 }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); }, [board, currentPiece, position]);
-  const rotate = useCallback(() => {
+  const moveLeft = () => { if (!currentPiece) return; const n = { x: position.x - 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); };
+  const moveRight = () => { if (!currentPiece) return; const n = { x: position.x + 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); };
+  const moveDown = () => { if (!currentPiece) return; const n = { x: position.x, y: position.y + 1 }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); };
+  const rotate = () => {
     if (!currentPiece || currentPiece.isOjama) return;
     const nextRot = ((rotationState + 1) % 4) as RotationState;
     const kicks = (currentPiece.type === 'I' ? SRS_I_KICK_TABLE : SRS_KICK_TABLE)[`${rotationState}->${nextRot}`] || [{ x: 0, y: 0 }];
     const rotated = rotateTetromino(currentPiece);
     for (const k of kicks) {
       const n = { x: position.x + k.x, y: position.y + k.y };
-      if (!checkCollision(board, { ...rotated, position: n }, { x: 0, y: 0 })) { setCurrentPiece(rotated); setPosition(testPos); setRotationState(nextRot); return; }
+      if (!checkCollision(board, { ...rotated, position: n }, { x: 0, y: 0 })) { setCurrentPiece(rotated); setPosition(n); setRotationState(nextRot); return; }
     }
-  }, [board, position, currentPiece, rotationState]);
-
-  const hardDrop = useCallback(() => {
+  };
+  const rotateCounterClockwise = () => {
+    if (!currentPiece || currentPiece.isOjama) return;
+    const nextRot = ((rotationState + 3) % 4) as RotationState;
+    const kicks = (currentPiece.type === 'I' ? SRS_I_KICK_TABLE : SRS_KICK_TABLE)[`${rotationState}->${nextRot}`] || [{ x: 0, y: 0 }];
+    let rotated = currentPiece; for (let i = 0; i < 3; i++) rotated = rotateTetromino(rotated);
+    for (const k of kicks) {
+      const n = { x: position.x + k.x, y: position.y + k.y };
+      if (!checkCollision(board, { ...rotated, position: n }, { x: 0, y: 0 })) { setCurrentPiece(rotated); setPosition(n); setRotationState(nextRot); return; }
+    }
+  };
+  const hardDrop = () => {
     if (!currentPiece) return; let d = { ...position };
     while (!checkCollision(board, { ...currentPiece, position: { x: d.x, y: d.y + 1 } }, { x: 0, y: 0 })) d.y++;
     lockPiece(d);
-  }, [board, currentPiece, position, lockPiece]);
+  };
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
@@ -182,12 +178,13 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3', '/sounds/music_C.mp3'];
     if (bgmAudioRef.current) { bgmAudioRef.current.pause(); }
     bgmAudioRef.current = new Audio(bgmList[Math.floor(Math.random() * bgmList.length)]);
-    bgmAudioRef.current.loop = true; bgmAudioRef.current.play();
+    bgmAudioRef.current.loop = true;
+    bgmAudioRef.current.play().catch(e => console.error("Audio error:", e)); // ★エラーハンドリング
     setBoard(createBoard()); setCurrentPiece(getRandomTetromino()); setNextPiece(getRandomTetromino());
     setScore(0); setLevel(1); setLines(0); setGameOver(false); setIsPaused(false); setGameStarted(true); setShowMenu(false);
   };
 
-  const handleBackToMenu = () => { setGameStarted(false); setShowMenu(true); };
+  const handleBackToMenu = () => { setGameStarted(false); setShowMenu(true); setGameOver(false); if (bgmAudioRef.current) bgmAudioRef.current.pause(); };
   const handleShowRanking = () => setShowLeaderboard(true);
   const handleShowHistory = () => setShowHistory(true);
   const handleSignedIn_Local = (addr: string) => setSessionAddress(addr.toLowerCase());
@@ -213,6 +210,8 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const renderBoard = () => {
     const displayBoard = board.map(row => [...row]);
+    const scaledInner = Math.max(6, Math.round(CELL_SIZE * layoutConfig.boardScale) - 4);
+    const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
     if (!gameOver && currentPiece) {
       currentPiece.shape.forEach((row, y) => row.forEach((cell, x) => {
         if (cell) {
@@ -244,7 +243,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   return (
     <div className="w-full overflow-x-hidden overflow-y-auto bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800" style={{ minHeight: 'var(--app-height, 100dvh)', paddingTop: 'env(safe-area-inset-top)' }}>
-      <div className="mx-auto flex w-full flex-col items-center" style={{ maxWidth: 520, minHeight: 'calc(var(--app-height, 100dvh) - 40px)', paddingLeft: `${layoutConfig.paddingX}px`, paddingRight: `${layoutConfig.paddingX}px`, paddingTop: `${layoutConfig.paddingTop}px`, justifyContent: shouldCenterOnDesktop ? 'center' : 'flex-start' }}>
+      <div className="mx-auto flex w-full flex-col items-center" style={{ maxWidth: 520, minHeight: 'calc(var(--app-height, 100dvh) - 40px)', paddingLeft: `${layoutConfig.paddingX}px`, paddingRight: `${layoutConfig.paddingX}px`, paddingTop: `${layoutConfig.paddingTop}px`, justifyContent: viewport.w >= 768 && viewport.h >= 700 && !layoutConfig.compact ? 'center' : 'flex-start' }}>
         <div className="text-center" style={{ marginBottom: `${layoutConfig.titleMarginBottom}px` }}>
           <h1 className="font-bold text-white tracking-wider" style={{ fontSize: `${layoutConfig.titleSize}px` }}>FARTETRIS</h1>
         </div>
@@ -252,13 +251,16 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
           <div className="bg-black/40 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-purple-400/30 p-1 relative shrink-0">
             {renderBoard()}
             {gameOver && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-lg z-30">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 rounded-lg z-[100]"> {/* ★z-indexを最大に */}
                 <div className="text-center px-4 w-full">
                   <p className="font-bold text-red-500 mb-2" style={{ fontSize: '30px' }}>GAME OVER</p>
                   <p className="text-white mb-4" style={{ fontSize: '20px' }}>Score: {score}</p>
-                  <div className="mb-4">
+                  
+                  {/* NFTミントボタン */}
+                  <div className="mb-4 relative z-[110]">
                     {currentUserAddress && <MintNFT address={currentUserAddress} score={score} />}
                   </div>
+
                   <div className="flex flex-col gap-3 w-full">
                     <button onClick={startNewGame} className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold shadow-lg">RETRY</button>
                     <button onClick={handleBackToMenu} className="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-full font-semibold shadow-lg">MENU</button>
@@ -287,14 +289,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
         <div className="w-full flex flex-col items-center mt-4 gap-2">
           <div className="flex justify-center gap-2 w-full max-w-[320px]">
-            <button onClick={rotateCounterClockwise} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>↺</button>
-            <button onClick={rotate} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>↻</button>
-            <button onClick={hardDrop} disabled={!gameStarted || gameOver || isPaused} className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>DROP</button>
+            <button onClick={rotateCounterClockwise} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-500 text-white font-bold" style={controlButtonBaseStyle}>↺</button>
+            <button onClick={rotate} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-600 text-white font-bold" style={controlButtonBaseStyle}>↻</button>
+            <button onClick={hardDrop} disabled={!gameStarted || gameOver || isPaused} className="bg-orange-600 text-white font-bold" style={controlButtonBaseStyle}>DROP</button>
           </div>
           <div className="flex justify-center gap-2 w-full max-w-[320px]">
-            <button onClick={moveLeft} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>←</button>
-            <button onClick={moveDown} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>↓</button>
-            <button onClick={moveRight} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>→</button>
+            <button onClick={moveLeft} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 text-white font-bold" style={controlButtonBaseStyle}>←</button>
+            <button onClick={moveDown} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 text-white font-bold" style={controlButtonBaseStyle}>↓</button>
+            <button onClick={moveRight} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 text-white font-bold" style={controlButtonBaseStyle}>→</button>
           </div>
         </div>
       </div>
