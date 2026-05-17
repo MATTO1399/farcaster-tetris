@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { HardhatUserConfig } from 'hardhat/config';
+process.env.TS_NODE_PROJECT = './tsconfig.hardhat.json';
 
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY?.trim() ?? '';
 const hasPrivateKey = /^0x[a-fA-F0-9]{64}$/.test(DEPLOYER_PRIVATE_KEY);
