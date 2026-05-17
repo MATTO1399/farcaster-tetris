@@ -18,7 +18,7 @@ import type { Board, Tetromino, Position } from '../../utils/tetrisLogic';
 import GameMenu from './GameMenu';
 import LeaderboardModal from './LeaderboardModal';
 import HistoryModal from './HistoryModal';
-import MintNFT from './MintNFT';
+import MintNFT from './MintNFT'; // ★ MintNFTは別ファイルで保持
 
 interface TetrisGameProps {
   onGameOver?: (score: number) => void;
@@ -30,11 +30,15 @@ interface LayoutConfig {
 
 type RotationState = 0 | 1 | 2 | 3;
 
+const DEBUG_OVERLAY = false;
+
 // --- Kick Tables ---
 const SRS_KICK_TABLE: Record<string, Position[]> = { '0->1': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: -2 }, { x: -1, y: -2 }], '1->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: -1 }, { x: 0, y: 2 }, { x: 1, y: 2 }], '1->2': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: -1 }, { x: 0, y: 2 }, { x: 1, y: 2 }], '2->1': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: -2 }, { x: -1, y: -2 }], '2->3': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: -2 }], '3->2': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }], '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: -2 }, { x: 1, y: 2 }], '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: -1 }, { x: 0, y: 2 }, { x: -1, y: 2 }] };
 const SRS_I_KICK_TABLE: Record<string, Position[]> = { '0->1': [{ x: 0, y: 0 }, { x: -2, y: 0 }, { x: 1, y: 0 }, { x: -2, y: -1 }, { x: 1, y: 2 }], '1->0': [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 1 }, { x: -1, y: -2 }], '1->2': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }], '2->1': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: -2, y: 0 }, { x: 1, y: -2 }, { x: -2, y: 1 }], '2->3': [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 1 }, { x: -1, y: -2 }], '3->2': [{ x: 0, y: 0 }, { x: -2, y: 0 }, { x: 1, y: 0 }, { x: -2, y: -1 }, { x: 1, y: 2 }], '3->0': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: -2, y: 0 }, { x: 1, y: -2 }, { x: -2, y: 1 }], '0->3': [{ x: 0, y: 0 }, { x: -1, y: 0 }, { x: 2, y: 0 }, { x: -1, y: 2 }, { x: 2, y: -1 }] };
 
 function clamp(n: number, min: number, max: number) { return Math.min(max, Math.max(min, n)); }
+function getUADataPlatform(): string { const nav: any = typeof navigator !== 'undefined' ? navigator : null; return String(nav?.userAgentData?.platform ?? nav?.platform ?? ''); }
+function isAndroidLike(): boolean { const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''; return /Android/i.test(ua) || /Android/i.test(getUADataPlatform()); }
 function formatAddress(address?: string) { if (!address) return ''; return `${address.slice(0, 6)}...${address.slice(-4)}`; }
 
 const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
@@ -59,55 +63,58 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [androidLike, setAndroidLike] = useState(false);
   const [viewport, setViewport] = useState({ w: 0, h: 0, ratio: 0 });
 
-  // SIWE
   const refreshSession = useCallback(async () => {
     try {
-      const response = await fetch('/api/siwe/me', { method: 'GET', cache: 'no-store' });
+      const response = await fetch('/api/siwe/me', { method: 'GET', cache: 'no-store', credentials: 'include' });
       const data = await response.json();
-      if (data?.authenticated && data?.address) setSessionAddress(data.address.toLowerCase());
-      else setSessionAddress(null);
+      if (data?.authenticated && typeof data?.address === 'string') { setSessionAddress(data.address.toLowerCase()); } else { setSessionAddress(null); }
     } catch { setSessionAddress(null); }
   }, []);
 
   useEffect(() => { void refreshSession(); }, [wagmiAddress, isConnected, refreshSession]);
-  const handleSignedIn = (addr: string) => setSessionAddress(addr.toLowerCase());
-  const handleSignedOut = () => setSessionAddress(null);
+  useEffect(() => { setAndroidLike(isAndroidLike()); }, []);
 
-  // Layout
   useEffect(() => {
     const setAppHeight = () => {
-      const h = window.visualViewport?.height ?? window.innerHeight;
-      const w = window.visualViewport?.width ?? window.innerWidth;
+      const vv = window.visualViewport;
+      const h = Math.round(vv?.height ?? window.innerHeight);
+      const w = Math.round(vv?.width ?? window.innerWidth);
       document.documentElement.style.setProperty('--app-height', `${h}px`);
       setViewport({ w, h, ratio: w ? h / w : 0 });
     };
     setAppHeight();
+    window.visualViewport?.addEventListener('resize', setAppHeight);
     window.addEventListener('resize', setAppHeight);
-    return () => window.removeEventListener('resize', setAppHeight);
+    return () => { window.visualViewport?.removeEventListener('resize', setAppHeight); window.removeEventListener('resize', setAppHeight); };
   }, []);
 
   const layoutConfig = useMemo<LayoutConfig>(() => {
     const vw = viewport.w || 390; const vh = viewport.h || 844;
-    const fitScale = clamp(Math.min((vw - 24) / 430, (vh - 24) / 920), 0.58, 1);
+    const widthScale = clamp((vw - 24) / 430, 0.72, 1);
+    const heightScale = clamp((vh - 24) / 920, 0.66, 1);
+    const isNarrowScreen = vw <= 390; const isShortScreen = vh <= 760; const isVeryShortScreen = vh <= 700; const isLandscapeish = vh / vw < 1.1;
+    let fitScale = Math.min(widthScale, heightScale);
+    if (isShortScreen) fitScale *= 0.96; if (isVeryShortScreen) fitScale *= 0.93; if (isLandscapeish) fitScale *= 0.9;
+    fitScale = clamp(fitScale, 0.58, 1);
     return {
-      boardScale: fitScale, sidePanelWidth: Math.round(112 * fitScale), buttonSize: Math.round(64 * fitScale),
-      gap: 8, paddingX: 12, paddingTop: 14, compact: vh <= 760, ultraCompact: vh <= 700,
-      boardPanelGap: 10, panelGap: 8, controlsMaxWidth: 320, titleSize: Math.round(36 * fitScale),
-      titleMarginBottom: 14, nextCellSize: Math.round(18 * fitScale), cardPaddingY: 10, cardPaddingX: 10,
-      pauseButtonHeight: 52, labelFontSize: 12, valueFontSize: 22, panelBorderRadius: 14, sectionGap: 10,
+      boardScale: fitScale, sidePanelWidth: clamp(Math.round(112 * fitScale), 88, 112), buttonSize: clamp(Math.round(64 * fitScale), 42, 68), gap: clamp(Math.round(8 * fitScale), 4, 10), paddingX: isNarrowScreen ? 8 : 12, paddingTop: isVeryShortScreen ? 6 : isShortScreen ? 10 : 14, compact: isShortScreen, ultraCompact: isVeryShortScreen || isLandscapeish, boardPanelGap: clamp(Math.round(10 * fitScale), 4, 10), panelGap: clamp(Math.round(8 * fitScale), 4, 10), controlsMaxWidth: clamp(Math.round(vw - 24), 220, 320), titleSize: clamp(Math.round(36 * fitScale), 24, 40), titleMarginBottom: isVeryShortScreen ? 8 : 14, nextCellSize: clamp(Math.round(18 * fitScale), 12, 18), cardPaddingY: isVeryShortScreen ? 8 : isShortScreen ? 10 : 12, cardPaddingX: isVeryShortScreen ? 8 : 10, pauseButtonHeight: clamp(Math.round(52 * fitScale), 40, 56), labelFontSize: clamp(Math.round(12 * fitScale), 10, 12), valueFontSize: clamp(Math.round(22 * fitScale), 16, 22), panelBorderRadius: isVeryShortScreen ? 12 : 14, sectionGap: clamp(Math.round(10 * fitScale), 6, 12),
     };
   }, [viewport]);
 
-  // ★ 消えていたスタイルの定義
+  const shouldCenterOnDesktop = viewport.w >= 768 && viewport.h >= 700 && !layoutConfig.compact;
+  const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);
+  const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
+  const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);
+
   const controlButtonBaseStyle: React.CSSProperties = {
     width: `${layoutConfig.buttonSize}px`, height: `${layoutConfig.buttonSize}px`,
     minWidth: `${layoutConfig.buttonSize}px`, minHeight: `${layoutConfig.buttonSize}px`,
     borderRadius: `${Math.max(10, Math.round(layoutConfig.buttonSize * 0.18))}px`,
   };
 
-  // Game Logic
   const finalizeGameOver = useCallback(async (finalScore: number) => {
     setGameOver(true);
     if (!currentUserAddress) return;
@@ -145,34 +152,25 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     }
   }, [position, board, currentPiece, gameStarted, gameOver, isPaused, lockPiece]);
 
-  const moveLeft = () => { if (!currentPiece) return; const n = { x: position.x - 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); };
-  const moveRight = () => { if (!currentPiece) return; const n = { x: position.x + 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); };
-  const moveDown = () => { if (!currentPiece) return; const n = { x: position.x, y: position.y + 1 }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); };
-  const rotate = () => {
+  const moveLeft = useCallback(() => { if (!currentPiece) return; const n = { x: position.x - 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); }, [board, currentPiece, position]);
+  const moveRight = useCallback(() => { if (!currentPiece) return; const n = { x: position.x + 1, y: position.y }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); }, [board, currentPiece, position]);
+  const moveDown = useCallback(() => { if (!currentPiece) return; const n = { x: position.x, y: position.y + 1 }; if (!checkCollision(board, { ...currentPiece, position: n }, { x: 0, y: 0 })) setPosition(n); }, [board, currentPiece, position]);
+  const rotate = useCallback(() => {
     if (!currentPiece || currentPiece.isOjama) return;
     const nextRot = ((rotationState + 1) % 4) as RotationState;
     const kicks = (currentPiece.type === 'I' ? SRS_I_KICK_TABLE : SRS_KICK_TABLE)[`${rotationState}->${nextRot}`] || [{ x: 0, y: 0 }];
     const rotated = rotateTetromino(currentPiece);
     for (const k of kicks) {
       const n = { x: position.x + k.x, y: position.y + k.y };
-      if (!checkCollision(board, { ...rotated, position: n }, { x: 0, y: 0 })) { setCurrentPiece(rotated); setPosition(n); setRotationState(nextRot); return; }
+      if (!checkCollision(board, { ...rotated, position: n }, { x: 0, y: 0 })) { setCurrentPiece(rotated); setPosition(testPos); setRotationState(nextRot); return; }
     }
-  };
-  const rotateCounterClockwise = () => {
-    if (!currentPiece || currentPiece.isOjama) return;
-    const nextRot = ((rotationState + 3) % 4) as RotationState;
-    const kicks = (currentPiece.type === 'I' ? SRS_I_KICK_TABLE : SRS_KICK_TABLE)[`${rotationState}->${nextRot}`] || [{ x: 0, y: 0 }];
-    let rotated = currentPiece; for (let i = 0; i < 3; i++) rotated = rotateTetromino(rotated);
-    for (const k of kicks) {
-      const n = { x: position.x + k.x, y: position.y + k.y };
-      if (!checkCollision(board, { ...rotated, position: n }, { x: 0, y: 0 })) { setCurrentPiece(rotated); setPosition(n); setRotationState(nextRot); return; }
-    }
-  };
-  const hardDrop = () => {
+  }, [board, position, currentPiece, rotationState]);
+
+  const hardDrop = useCallback(() => {
     if (!currentPiece) return; let d = { ...position };
     while (!checkCollision(board, { ...currentPiece, position: { x: d.x, y: d.y + 1 } }, { x: 0, y: 0 })) d.y++;
     lockPiece(d);
-  };
+  }, [board, currentPiece, position, lockPiece]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || isPaused) return;
@@ -181,15 +179,19 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
   }, [gameStarted, gameOver, isPaused, level, moveDown]);
 
   const startNewGame = () => {
+    const bgmList = ['/sounds/music_A.mp3', '/sounds/music_B.mp3', '/sounds/music_C.mp3'];
+    if (bgmAudioRef.current) { bgmAudioRef.current.pause(); }
+    bgmAudioRef.current = new Audio(bgmList[Math.floor(Math.random() * bgmList.length)]);
+    bgmAudioRef.current.loop = true; bgmAudioRef.current.play();
     setBoard(createBoard()); setCurrentPiece(getRandomTetromino()); setNextPiece(getRandomTetromino());
     setScore(0); setLevel(1); setLines(0); setGameOver(false); setIsPaused(false); setGameStarted(true); setShowMenu(false);
   };
 
-  const handleBackToMenu = () => { setGameStarted(false); setShowMenu(true); setGameOver(false); if (bgmAudioRef.current) bgmAudioRef.current.pause(); };
-  
-  // ★ 消えていたメニュー関数の復活
+  const handleBackToMenu = () => { setGameStarted(false); setShowMenu(true); };
   const handleShowRanking = () => setShowLeaderboard(true);
   const handleShowHistory = () => setShowHistory(true);
+  const handleSignedIn_Local = (addr: string) => setSessionAddress(addr.toLowerCase());
+  const handleSignedOut_Local = () => setSessionAddress(null);
 
   const renderNextPiece = () => {
     if (!nextPiece) return null; const previewCell = layoutConfig.nextCellSize;
@@ -219,8 +221,6 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         }
       }));
     }
-    const scaledInner = Math.max(6, Math.round(CELL_SIZE * layoutConfig.boardScale) - 4);
-    const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));
     return (
       <div style={{ position: 'relative' }}>
         {displayBoard.map((row, y) => (
@@ -236,7 +236,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   if (showMenu) return (
     <>
-      <GameMenu onStartGame={startNewGame} onShowHistory={handleShowHistory} onShowRanking={handleShowRanking} username={currentUserAddress ? formatAddress(currentUserAddress) : undefined} onSignedIn={handleSignedIn} onSignedOut={handleSignedOut} />
+      <GameMenu onStartGame={startNewGame} onShowHistory={handleShowHistory} onShowRanking={handleShowRanking} username={currentUserAddress ? formatAddress(currentUserAddress) : undefined} onSignedIn={handleSignedIn_Local} onSignedOut={handleSignedOut_Local} />
       <LeaderboardModal isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
       <HistoryModal isOpen={showHistory} onClose={() => setShowHistory(false)} currentUserAddress={currentUserAddress ?? undefined} />
     </>
@@ -244,7 +244,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
 
   return (
     <div className="w-full overflow-x-hidden overflow-y-auto bg-gradient-to-br from-purple-900 via-indigo-900 to-purple-800" style={{ minHeight: 'var(--app-height, 100dvh)', paddingTop: 'env(safe-area-inset-top)' }}>
-      <div className="mx-auto flex w-full flex-col items-center" style={{ maxWidth: 520, minHeight: 'calc(var(--app-height, 100dvh) - 40px)', paddingLeft: `${layoutConfig.paddingX}px`, paddingRight: `${layoutConfig.paddingX}px`, paddingTop: `${layoutConfig.paddingTop}px`, justifyContent: viewport.w >= 768 && viewport.h >= 700 && !layoutConfig.compact ? 'center' : 'flex-start' }}>
+      <div className="mx-auto flex w-full flex-col items-center" style={{ maxWidth: 520, minHeight: 'calc(var(--app-height, 100dvh) - 40px)', paddingLeft: `${layoutConfig.paddingX}px`, paddingRight: `${layoutConfig.paddingX}px`, paddingTop: `${layoutConfig.paddingTop}px`, justifyContent: shouldCenterOnDesktop ? 'center' : 'flex-start' }}>
         <div className="text-center" style={{ marginBottom: `${layoutConfig.titleMarginBottom}px` }}>
           <h1 className="font-bold text-white tracking-wider" style={{ fontSize: `${layoutConfig.titleSize}px` }}>FARTETRIS</h1>
         </div>
@@ -287,14 +287,14 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
         </div>
         <div className="w-full flex flex-col items-center mt-4 gap-2">
           <div className="flex justify-center gap-2 w-full max-w-[320px]">
-            <button onClick={rotateCounterClockwise} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold" style={controlButtonBaseStyle}>↺</button>
-            <button onClick={rotate} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold" style={controlButtonBaseStyle}>↻</button>
-            <button onClick={hardDrop} disabled={!gameStarted || gameOver || isPaused} className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold" style={controlButtonBaseStyle}>DROP</button>
+            <button onClick={rotateCounterClockwise} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>↺</button>
+            <button onClick={rotate} disabled={!gameStarted || gameOver || isPaused} className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>↻</button>
+            <button onClick={hardDrop} disabled={!gameStarted || gameOver || isPaused} className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>DROP</button>
           </div>
           <div className="flex justify-center gap-2 w-full max-w-[320px]">
-            <button onClick={moveLeft} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold" style={controlButtonBaseStyle}>←</button>
-            <button onClick={moveDown} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold" style={controlButtonBaseStyle}>↓</button>
-            <button onClick={moveRight} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold" style={controlButtonBaseStyle}>→</button>
+            <button onClick={moveLeft} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>←</button>
+            <button onClick={moveDown} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>↓</button>
+            <button onClick={moveRight} disabled={!gameStarted || gameOver || isPaused} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:opacity-50 text-white font-bold flex-shrink-0" style={controlButtonBaseStyle}>→</button>
           </div>
         </div>
       </div>
