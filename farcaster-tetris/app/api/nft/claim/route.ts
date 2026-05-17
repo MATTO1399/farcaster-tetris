@@ -11,13 +11,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing address or score' }, { status: 400 });
     }
 
-    // ユーザーが達成した「最高のしきい値」を判定
+    // 1. スコア条件の判定
     const achievedThreshold = [...SCORE_THRESHOLDS].reverse().find(t => score >= t);
 
-    if (!achievedThreshold) {
-      return NextResponse.json({ error: 'Score too low for NFT' }, { status: 400 });
-    }
+    // 2. NFTのラベル（名前）を決定
+    // 100点未満なら「First_NFT」、100点以上なら「scoreXXX_NFT」
+    const nftLabel = achievedThreshold ? `score${achievedThreshold}_NFT` : "First_NFT";
 
+    // 3. 署名の作成 (EIP-712)
     const privKey = process.env.NFT_SIGNER_PRIVATE_KEY;
     if (!privKey) throw new Error('Signer key missing');
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     const domain = {
       name: "FirstPlayNFT",
       version: "1",
-      chainId: 84532, 
+      chainId: 84532, // Base Sepolia
       verifyingContract: process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS
     };
 
@@ -37,11 +38,9 @@ export async function POST(request: NextRequest) {
       ]
     };
 
-    // 【重要】スコアごとにキャンペーンIDを変えることで、別々のNFTとしてミント可能にします
-    // 例: "FIRST_PLAY_V1_100", "FIRST_PLAY_V1_1000" など
-    const campaignText = `${process.env.NEXT_PUBLIC_NFT_CAMPAIGN_TEXT}_${achievedThreshold}`;
+    // キャンペーンIDもラベル名と連動させる（これで種類別に1回ずつミント可能になる）
+    const campaignText = `${process.env.NEXT_PUBLIC_NFT_CAMPAIGN_TEXT}_${nftLabel}`;
     const campaignId = ethers.keccak256(ethers.toUtf8Bytes(campaignText));
-    
     const deadline = Math.floor(Date.now() / 1000) + 600; // 10分間有効
 
     const value = {
@@ -56,8 +55,7 @@ export async function POST(request: NextRequest) {
       signature,
       deadline,
       campaignId,
-      achievedThreshold,
-      campaignText
+      nftLabel
     });
 
   } catch (error) {
