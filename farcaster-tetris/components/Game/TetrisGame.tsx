@@ -258,7 +258,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                   
                   {/* NFTミントボタン */}
                   <div className="mb-4 relative z-[110]">
-                    {currentUserAddress && <MintNFT address={currentUserAddress} score={score} />}
+                    {currentUserAddress && <MintNFT score={lastScore} />}
                   </div>
 
                   <div className="flex flex-col gap-3 w-full">
