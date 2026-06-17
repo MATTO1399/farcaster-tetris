@@ -19,6 +19,7 @@ import GameMenu from './GameMenu';
 import LeaderboardModal from './LeaderboardModal';
 import HistoryModal from './HistoryModal';
 import MintNFT from './MintNFT';
+import MintTetrisNFT from './MintTetrisNFT';
 
 interface TetrisGameProps {
   onGameOver?: (score: number) => void;
@@ -121,7 +122,7 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
     let newBoard = mergeTetromino(board, { ...currentPiece, position: lockPos });
     let newScore = score;
     if (currentPiece.isOjama) {
-      let count = 0; newBoard.forEach(row => row.forEach(c => { if(c) count++ }));
+      let count = 0; newBoard.forEach(row => row.forEach(c => { if (c) count++ }));
       newBoard = createBoard(); newScore += count * 10;
     } else {
       const { board: b, linesCleared: l } = clearLines(newBoard);
@@ -255,10 +256,16 @@ const TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {
                 <div className="text-center px-4 w-full">
                   <p className="font-bold text-red-500 mb-2" style={{ fontSize: '30px' }}>GAME OVER</p>
                   <p className="text-white mb-4" style={{ fontSize: '20px' }}>Score: {score}</p>
-                  
+
                   {/* NFTミントボタン */}
                   <div className="mb-4 relative z-[110]">
-                    {currentUserAddress && <MintNFT score={score} />}
+                    {currentUserAddress && (
+                      <>
+                        <MintNFT score={score} />
+                        <MintTetrisNFT score={score} />
+                      </>
+                    )}
+
                   </div>
 
                   <div className="flex flex-col gap-3 w-full">
