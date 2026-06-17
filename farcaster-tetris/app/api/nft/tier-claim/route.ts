@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ⑤ nonce 単調増加
-    const nextNonce = BigInt(Date.now()) * 1000n + (lastNonceValue++ % 1000n);
+    const nextNonce = (Date.now() * 1000) + (Number(lastNonceValue++) % 1000);
     const nonce = nextNonce;
 
     // ⑥ 署名生成
