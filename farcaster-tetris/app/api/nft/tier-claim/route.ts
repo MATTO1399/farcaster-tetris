@@ -1,78 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 
-// スコアから Tier (uint8) 判定
-function getTierForScore(score: number): number {
-  if (score >= 3000) return 3; // PLATINUM
-  if (score >= 1000) return 2; // GOLD
-  if (score >= 500) return 1;  // SILVER
-  if (score >= 100) return 0;  // BRONZE
-  return -1;
-}
-
-// Tier 名前 (ログ用)
 const TIER_NAMES = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'];
+const TIER_MIN_SCORES = [100, 500, 1000, 3000];
+
+// サーバー側nonce用カウンタ（連続値: 衝突防止）
+let lastNonceValue = 0n;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { address, score } = body;
+    const { address, tier, score } = body;
 
+    // ① バリデーション
+    if (!address || typeof tier !== 'number' || typeof score !== 'number') {
+      return NextResponse.json(
+        { error: 'address, tier (0-3), score required' },
+        { status: 400 }
+      );
+    }
+    if (tier < 0 || tier > 3 || !Number.isInteger(tier)) {
+      return NextResponse.json({ error: 'tier must be 0-3' }, { status: 400 });
+    }
+    if (score < TIER_MIN_SCORES[tier]) {
+      return NextResponse.json(
+        { error: `Score ${score} is too low for ${TIER_NAMES[tier]} (need ${TIER_MIN_SCORES[tier]}+)` },
+        { status: 400 }
+      );
+    }
+
+    // ② 環境変数
     const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
     const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
     const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_TETRIS_TIER_NFT_ADDRESS;
     const NFT_NAME = process.env.NEXT_PUBLIC_TETRIS_TIER_NFT_NAME || 'Farcaster Tetris Tier';
 
     if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
-      return NextResponse.json(
-        { error: 'Missing environment variables' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Missing environment variables' }, { status: 500 });
     }
 
-    if (!address || typeof score !== 'number') {
-      return NextResponse.json(
-        { error: 'address and score required' },
-        { status: 400 }
-      );
-    }
-
-    // Tier 判定
-    const tierId = getTierForScore(score);
-    if (tierId < 0) {
-      return NextResponse.json(
-        { error: 'Score too low. Need at least 100 points.' },
-        { status: 400 }
-      );
-    }
-
+    // ③ コントラクト情報取得
     const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const signerWallet = new ethers.Wallet(PRIVATE_KEY, provider);
-
     const contractABI = [
-      'function owner() view returns (address)',
-      'function signer() view returns (address)',
       'function campaignId() view returns (bytes32)',
-      'function getClaimDigest(address to, uint8 tier, uint256 deadline, uint256 nonce) view returns (bytes32)'
+      'function minted(address,uint8) view returns (bool)'
     ];
-
     const contract = new ethers.Contract(CONTRACT_ADDRESS!, contractABI, provider);
 
     const campaignId = await contract.campaignId();
 
-    // 既にミント済か確認 (該当Tier)
-    // ※ABI の `minted(address, uint8) returns (bool)` を直接呼ぶ
+    // ④ 既にミント済か確認
     try {
-      const minted = await contract.minted(address, tierId);
+      const minted = await contract.minted(address, tier);
       if (minted) {
         return NextResponse.json(
-          { error: `This address has already claimed ${TIER_NAMES[tierId]} tier NFT.` },
+          { error: `This address has already claimed ${TIER_NAMES[tier]} tier NFT.` },
           { status: 400 }
         );
       }
     } catch (e) {
-      // public mapping が読めない環境でも claim 自体は動くので、ここではエラーを握りつぶす
+      // エラーなら握りつぶし (claim 側で二重チェックされる)
     }
+
+    // ⑤ nonce 単調増加
+    const nextNonce = BigInt(Date.now()) * 1000n + (lastNonceValue++ % 1000n);
+    const nonce = nextNonce;
+
+    // ⑥ 署名生成
+    const signerWallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    const deadline = Math.floor(Date.now() / 1000) + 600;
 
     const domain = {
       name: NFT_NAME,
@@ -91,12 +87,9 @@ export async function POST(request: NextRequest) {
       ]
     };
 
-    const nonce = Date.now();
-    const deadline = Math.floor(Date.now() / 1000) + 600;
-
     const message = {
       to: address,
-      tier: tierId,
+      tier: tier,
       deadline,
       campaignId,
       nonce
@@ -111,9 +104,8 @@ export async function POST(request: NextRequest) {
       message,
       signature,
       contractAddress: CONTRACT_ADDRESS,
-      score,
-      tier: tierId,
-      tierName: TIER_NAMES[tierId]
+      tier,
+      tierName: TIER_NAMES[tier]
     });
   } catch (error: any) {
     console.error('tier-claim error', error);

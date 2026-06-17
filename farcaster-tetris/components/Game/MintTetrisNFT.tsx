@@ -24,14 +24,6 @@ const TIER_INFO = [
   { name: 'Platinum', minScore: 3000, color: 'bg-cyan-300' }
 ];
 
-function getTierForScore(score: number): number {
-  if (score >= 3000) return TIER.PLATINUM;
-  if (score >= 1000) return TIER.GOLD;
-  if (score >= 500) return TIER.SILVER;
-  if (score >= 100) return TIER.BRONZE;
-  return -1;
-}
-
 const TETRIS_TIER_ABI = [
   {
     type: 'function',
@@ -58,7 +50,7 @@ const TETRIS_TIER_ABI = [
   }
 ] as const;
 
-const TARGET_CHAIN_ID = 84532; // Base Sepolia
+const TARGET_CHAIN_ID = 84532;
 
 type Props = {
   score: number;
@@ -81,7 +73,7 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
   const contractAddress = process.env.NEXT_PUBLIC_TETRIS_TIER_NFT_ADDRESS as `0x${string}` | undefined;
 
   // 4Tier × minted を並列取得
-  const { data: mintedResults } = useReadContracts({
+  const { data: mintedResults, refetch: refetchMinted } = useReadContracts({
     contracts: address && contractAddress
       ? [0, 1, 2, 3].map(tier => ({
           address: contractAddress,
@@ -102,12 +94,23 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
     [0, 1, 2, 3].forEach(i => { mintedState[i] = false; });
   }
 
+  // スコアから最大解放Tier
+  function getUnlockedTier(score: number): number {
+    if (score >= 3000) return 3;
+    if (score >= 1000) return 2;
+    if (score >= 500) return 1;
+    if (score >= 100) return 0;
+    return -1;
+  }
+
+  const unlockedTier = getUnlockedTier(score);
+
   useEffect(() => {
     if (isSuccess && txHash) {
       setStatus('ミント完了！🎉');
-      if (onMinted) onMinted(1);
+      refetchMinted(); // ミント後の状態を再取得
     }
-  }, [isSuccess, txHash, onMinted]);
+  }, [isSuccess, txHash, refetchMinted]);
 
   const handleMint = async (tierId: number) => {
     setError(null);
@@ -129,6 +132,11 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
       setBusyTier(null);
       return;
     }
+    if (tierId > unlockedTier) {
+      setError(`${TIER_INFO[tierId].name} はまだロック中`);
+      setBusyTier(null);
+      return;
+    }
 
     // ネットワーク切替
     if (chainId !== TARGET_CHAIN_ID) {
@@ -142,24 +150,23 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
       }
     }
 
-    // 署名取得
+    // 署名取得 (Tier をクライアントから送る)
     setStatus('署名を取得中...');
     let data;
     try {
       const res = await fetch('/api/nft/tier-claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, score })
+        body: JSON.stringify({ address, tier: tierId, score })
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || `HTTP ${res.status}`);
       }
       data = await res.json();
-      
-      // サーバーから返ってきた tier (might differ from requested)
-      const serverTier = data.tier;
-      if (serverTier !== tierId) {
+
+      const serverTier = data.message?.tier ?? data.tier;
+      if (Number(serverTier) !== tierId) {
         throw new Error(`サーバー判定Tier=${serverTier} が不一致`);
       }
     } catch (e: any) {
@@ -190,10 +197,7 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
     }
   };
 
-  // 対象Tier計算
-  const eligibleTier = getTierForScore(score);
-  
-  if (eligibleTier < 0) {
+  if (unlockedTier < 0) {
     return (
       <div className="flex flex-col items-center gap-2">
         <p className="text-sm text-gray-400">スコア {score}点。次のTierまであと少し!</p>
@@ -203,12 +207,10 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {/* Tier ボタン表示 (対象Tier ごとに) */}
       <div className="flex flex-wrap gap-2 justify-center">
         {TIER_INFO.map((info, tierId) => {
-          const canClaim = tierId === eligibleTier && !mintedState[tierId];
           const alreadyMinted = mintedState[tierId];
-          const isUnlocked = tierId <= eligibleTier;
+          const isUnlocked = tierId <= unlockedTier;
           const isBusy = busyTier === tierId && (isPending || isConfirming);
 
           if (alreadyMinted) {
@@ -217,7 +219,7 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
                 key={tierId}
                 className="px-4 py-2 bg-green-700 text-white text-sm rounded-lg"
               >
-                ✓ {info.name}
+                ✓ {info.name} NFT
               </div>
             );
           }
@@ -238,7 +240,7 @@ export default function MintTetrisNFT({ score, onMinted }: Props) {
             <button
               key={tierId}
               onClick={() => handleMint(tierId)}
-              disabled={!isConnected || isBusy || !canClaim}
+              disabled={!isConnected || isBusy}
               className={`px-4 py-2 ${info.color} text-black font-bold rounded-lg hover:opacity-80 disabled:opacity-50`}
             >
               {isBusy ? '処理中...' : `${info.name} NFT をGET!`}
