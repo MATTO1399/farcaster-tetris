@@ -4,20 +4,22 @@ import { ReactNode, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createConfig, http, WagmiProvider } from 'wagmi';
 import { base, baseSepolia } from 'wagmi/chains';
-import { injected, coinbaseWallet } from 'wagmi/connectors'; // ★injectedを追加
+import { injected, coinbaseWallet } from 'wagmi/connectors';
 
 const wagmiConfig = createConfig({
   chains: [base, baseSepolia],
   connectors: [
-    injected(), // ★Rabbyなどの拡張機能を最優先で認識させる
+    // injected() — Rabby/MetaMaskなど通常のブラウザ拡張を認識
+    injected({ shimDisconnect: true }),
     coinbaseWallet({ appName: 'FARTETRIS' }),
   ],
   transports: {
     [base.id]: http(),
     [baseSepolia.id]: http(),
   },
-  // インジェクトされたプロバイダー（Rabby等）を自動で見つける設定を有効化
-  multiInjectedProviderDiscovery: true, 
+  // ★修正: マルチプロバイダー検出をOFF
+  // （window.ethereum の再定義による Cannot redefine エラーを回避）
+  multiInjectedProviderDiscovery: false,
   ssr: true,
 });
 
