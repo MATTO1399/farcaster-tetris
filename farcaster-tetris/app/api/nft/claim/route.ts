@@ -3,69 +3,85 @@ import { ethers } from 'ethers';
 
 export async function POST(request: NextRequest) {
   try {
-    const { address, score, requestedNft } = await request.json();
+    const body = await request.json();
+    const { address, score } = body;
 
-    // 1. 基本的な入力チェック
-    if (!address || score === undefined) {
-      return NextResponse.json({ error: 'Missing address or score' }, { status: 400 });
+    const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+    const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
+    const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS;
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://farcaster-tetris.vercel.app';
+
+    if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
+      return NextResponse.json(
+        { error: 'Missing environment variables' },
+        { status: 500 },
+      );
     }
 
-    // 2. ミント対象のNFTを決定
-    // フロントエンドが所持チェックした結果（requestedNft）があればそれを優先
-    // なければデフォルトで "First_NFT" にします
-    const nftLabel = requestedNft || "First_NFT";
+    const contractABI = [
+      'function hasClaimed(address account) view returns (bool)',
+      'function campaignId() view returns (bytes32)',
+    ];
 
-    // 3. 署名環境のチェック
-    const privKey = process.env.NFT_SIGNER_PRIVATE_KEY;
-    const nftAddress = process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS;
-    const campaignBase = process.env.NEXT_PUBLIC_NFT_CAMPAIGN_TEXT || "FIRST_PLAY_V1";
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const signer = new ethers.Wallet(PRIVATE_KEY, provider);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS!, contractABI, provider);
 
-    if (!privKey || !nftAddress) {
-      console.error("Missing SIGNER_PRIVATE_KEY or NFT_ADDRESS in env");
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    const campaignId = await contract.campaignId();
+    const hasClaimed: boolean = await contract.hasClaimed(address);
+
+    if (hasClaimed) {
+      return NextResponse.json(
+        {
+          error:
+            'This address has already claimed First_NFT. Score-based NFTs require an upgraded contract.',
+        },
+        { status: 400 },
+      );
     }
 
-    // 4. 署名の作成 (EIP-712 準拠)
-    const wallet = new ethers.Wallet(privKey);
     const domain = {
-      name: "FirstPlayNFT",
-      version: "1",
-      chainId: 84532, // Base Sepolia
-      verifyingContract: nftAddress
+      name: 'FirstPlayNFT',
+      version: '1',
+      chainId: 84532,
+      verifyingContract: CONTRACT_ADDRESS!,
     };
 
     const types = {
       Claim: [
-        { name: "recipient", type: "address" },
-        { name: "campaignId", type: "bytes32" },
-        { name: "deadline", type: "uint256" }
-      ]
+        { name: 'to', type: 'address' },
+        { name: 'deadline', type: 'uint256' },
+        { name: 'campaignId', type: 'bytes32' },
+        { name: 'nonce', type: 'uint256' },
+      ],
     };
 
-    // キャンペーンIDの生成（NFTのラベル名と連動させて、1種類1回制限を実現）
-    const campaignText = `${campaignBase}_${nftLabel}`;
-    const campaignId = ethers.keccak256(ethers.toUtf8Bytes(campaignText));
-    const deadline = Math.floor(Date.now() / 1000) + 600; // 10分間有効
+    const nonce = Date.now();
+    const deadline = Math.floor(Date.now() / 1000) + 600;
 
-    const value = {
-      recipient: address,
-      campaignId: campaignId,
-      deadline: deadline
-    };
-
-    // 署名を実行
-    const signature = await wallet.signTypedData(domain, types, value);
-
-    // フロントエンドに必要な情報をすべて返す
-    return NextResponse.json({
-      signature,
+    const message = {
+      to: address,
       deadline,
       campaignId,
-      nftLabel
-    });
+      nonce,
+    };
 
-  } catch (error) {
-    console.error('Claim API Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    const signature = await signer.signTypedData(domain, types, message);
+
+    return NextResponse.json({
+      domain,
+      types,
+      primaryType: 'Claim',
+      message,
+      signature,
+      contractAddress: CONTRACT_ADDRESS,
+      score,
+    });
+  } catch (error: any) {
+    console.error('claim error', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error', detail: String(error?.message ?? error) },
+      { status: 500 },
+    );
   }
 }

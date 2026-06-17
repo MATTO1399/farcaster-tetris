@@ -1,0 +1,170 @@
+[1mdiff --git a/farcaster-tetris/components/Game/TetrisGame.tsx b/farcaster-tetris/components/Game/TetrisGame.tsx[m
+[1mindex 7a01ead..5651328 100644[m
+[1m--- a/farcaster-tetris/components/Game/TetrisGame.tsx[m
+[1m+++ b/farcaster-tetris/components/Game/TetrisGame.tsx[m
+[36m@@ -1,6 +1,6 @@[m
+ 'use client';[m
+ [m
+[31m-import React, { useState, useEffect, useCallback, useRef } from 'react';[m
+[32m+[m[32mimport React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';[m
+ import Image from 'next/image';[m
+ import { useAccount } from 'wagmi';[m
+ import {[m
+[36m@@ -30,6 +30,21 @@[m [minterface LayoutConfig {[m
+   gap: number;[m
+   paddingX: number;[m
+   paddingTop: number;[m
+[32m+[m[32m  compact: boolean;[m
+[32m+[m[32m  ultraCompact: boolean;[m
+[32m+[m[32m  boardPanelGap: number;[m
+[32m+[m[32m  panelGap: number;[m
+[32m+[m[32m  controlsMaxWidth: number;[m
+[32m+[m[32m  titleSize: number;[m
+[32m+[m[32m  titleMarginBottom: number;[m
+[32m+[m[32m  nextCellSize: number;[m
+[32m+[m[32m  cardPaddingY: number;[m
+[32m+[m[32m  cardPaddingX: number;[m
+[32m+[m[32m  pauseButtonHeight: number;[m
+[32m+[m[32m  labelFontSize: number;[m
+[32m+[m[32m  valueFontSize: number;[m
+[32m+[m[32m  panelBorderRadius: number;[m
+[32m+[m[32m  sectionGap: number;[m
+ }[m
+ [m
+ type RotationState = 0 | 1 | 2 | 3;[m
+[36m@@ -240,10 +255,12 @@[m [mconst TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {[m
+ [m
+   useEffect(() => {[m
+     const setAppHeight = () => {[m
+[31m-      const h = window.visualViewport?.height ?? window.innerHeight;[m
+[32m+[m[32m      const vv = window.visualViewport;[m
+[32m+[m[32m      const h = Math.round(vv?.height ?? window.innerHeight);[m
+[32m+[m[32m      const w = Math.round(vv?.width ?? window.innerWidth);[m
+[32m+[m
+       document.documentElement.style.setProperty('--app-height', `${h}px`);[m
+ [m
+[31m-      const w = window.innerWidth;[m
+       const ratio = w ? h / w : 0;[m
+       setViewport({ w, h, ratio });[m
+     };[m
+[36m@@ -262,66 +279,73 @@[m [mconst TetrisGame: React.FC<TetrisGameProps> = ({ onGameOver }) => {[m
+     };[m
+   }, []);[m
+ [m
+[31m-  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({[m
+[31m-    boardScale: 0.72,[m
+[31m-    sidePanelWidth: 104,[m
+[31m-    buttonSize: 56,[m
+[31m-    gap: 5,[m
+[31m-    paddingX: 12,[m
+[31m-    paddingTop: 30,[m
+[31m-  });[m
+[31m-[m
+[31m-  useEffect(() => {[m
+[31m-    const calculateLayout = () => {[m
+[31m-      const width = window.innerWidth;[m
+[31m-      const height = window.innerHeight;[m
+[31m-      const aspectRatio = height / width;[m
+[31m-[m
+[31m-      let config: LayoutConfig;[m
+[31m-[m
+[31m-      if (width <= 375) {[m
+[31m-        if (aspectRatio > 2.0) {[m
+[31m-          config = { boardScale: 0.68, sidePanelWidth: 96, buttonSize: 52, gap: 5, paddingX: 8, paddingTop: 15 };[m
+[31m-        } else {[m
+[31m-          config = { boardScale: 0.65, sidePanelWidth: 96, buttonSize: 50, gap: 5, paddingX: 8, paddingTop: 20 };[m
+[31m-        }[m
+[31m-      } else if (width <= 390) {[m
+[31m-        config = { boardScale: 0.7, sidePanelWidth: 100, buttonSize: 54, gap: 5, paddingX: 10, paddingTop: 25 };[m
+[31m-      } else if (width <= 414) {[m
+[31m-        config = { boardScale: 0.75, sidePanelWidth: 104, buttonSize: 56, gap: 5, paddingX: 12, paddingTop: 30 };[m
+[31m-      } else if (width <= 768) {[m
+[31m-        if (aspectRatio < 1.0) {[m
+[31m-          config = { boardScale: 0.6, sidePanelWidth: 108, buttonSize: 60, gap: 5, paddingX: 16, paddingTop: 20 };[m
+[31m-        } else {[m
+[31m-          config = { boardScale: 0.85, sidePanelWidth: 110, buttonSize: 64, gap: 5, paddingX: 16, paddingTop: 30 };[m
+[31m-        }[m
+[31m-      } else {[m
+[31m-        config = { boardScale: 0.9, sidePanelWidth: 112, buttonSize: 68, gap: 5, paddingX: 20, paddingTop: 30 };[m
+[31m-      }[m
+[31m-[m
+[31m-      setLayoutConfig(config);[m
+[31m-    };[m
+[31m-[m
+[31m-    calculateLayout();[m
+[31m-    window.addEventListener('resize', calculateLayout);[m
+[31m-    window.addEventListener('orientationchange', calculateLayout);[m
+[31m-    return () => {[m
+[31m-      window.removeEventListener('resize', calculateLayout);[m
+[31m-      window.removeEventListener('orientationchange', calculateLayout);[m
+[32m+[m[32m  const layoutConfig = useMemo<LayoutConfig>(() => {[m
+[32m+[m[32m    const vw = viewport.w || 390;[m
+[32m+[m[32m    const vh = viewport.h || 844;[m
+[32m+[m
+[32m+[m[32m    const widthScale = clamp((vw - 24) / 430, 0.72, 1);[m
+[32m+[m[32m    const heightScale = clamp((vh - 24) / 920, 0.66, 1);[m
+[32m+[m
+[32m+[m[32m    const isNarrowScreen = vw <= 390;[m
+[32m+[m[32m    const isShortScreen = vh <= 760;[m
+[32m+[m[32m    const isVeryShortScreen = vh <= 700;[m
+[32m+[m[32m    const isLandscapeish = vh / vw < 1.1;[m
+[32m+[m
+[32m+[m[32m    let fitScale = Math.min(widthScale, heightScale);[m
+[32m+[m
+[32m+[m[32m    if (isShortScreen) fitScale *= 0.96;[m
+[32m+[m[32m    if (isVeryShortScreen) fitScale *= 0.93;[m
+[32m+[m[32m    if (isLandscapeish) fitScale *= 0.9;[m
+[32m+[m
+[32m+[m[32m    fitScale = clamp(fitScale, 0.58, 1);[m
+[32m+[m
+[32m+[m[32m    return {[m
+[32m+[m[32m      boardScale: fitScale,[m
+[32m+[m[32m      sidePanelWidth: clamp(Math.round(112 * fitScale), 88, 112),[m
+[32m+[m[32m      buttonSize: clamp(Math.round(64 * fitScale), 42, 68),[m
+[32m+[m[32m      gap: clamp(Math.round(8 * fitScale), 4, 10),[m
+[32m+[m[32m      paddingX: isNarrowScreen ? 8 : 12,[m
+[32m+[m[32m      paddingTop: isVeryShortScreen ? 6 : isShortScreen ? 10 : 14,[m
+[32m+[m[32m      compact: isShortScreen,[m
+[32m+[m[32m      ultraCompact: isVeryShortScreen || isLandscapeish,[m
+[32m+[m[32m      boardPanelGap: clamp(Math.round(10 * fitScale), 4, 10),[m
+[32m+[m[32m      panelGap: clamp(Math.round(8 * fitScale), 4, 10),[m
+[32m+[m[32m      controlsMaxWidth: clamp(Math.round(vw - 24), 220, 320),[m
+[32m+[m[32m      titleSize: clamp(Math.round(36 * fitScale), 24, 40),[m
+[32m+[m[32m      titleMarginBottom: isVeryShortScreen ? 8 : 14,[m
+[32m+[m[32m      nextCellSize: clamp(Math.round(18 * fitScale), 12, 18),[m
+[32m+[m[32m      cardPaddingY: isVeryShortScreen ? 8 : isShortScreen ? 10 : 12,[m
+[32m+[m[32m      cardPaddingX: isVeryShortScreen ? 8 : 10,[m
+[32m+[m[32m      pauseButtonHeight: clamp(Math.round(52 * fitScale), 40, 56),[m
+[32m+[m[32m      labelFontSize: clamp(Math.round(12 * fitScale), 10, 12),[m
+[32m+[m[32m      valueFontSize: clamp(Math.round(22 * fitScale), 16, 22),[m
+[32m+[m[32m      panelBorderRadius: isVeryShortScreen ? 12 : 14,[m
+[32m+[m[32m      sectionGap: clamp(Math.round(10 * fitScale), 6, 12),[m
+     };[m
+[31m-  }, []);[m
+[32m+[m[32m  }, [viewport.w, viewport.h]);[m
+ [m
+   const scaledCell = Math.round(CELL_SIZE * layoutConfig.boardScale);[m
+   const scaledBorder = Math.max(1, Math.round(2 * layoutConfig.boardScale));[m
+   const scaledInner = Math.max(6, scaledCell - scaledBorder * 2);[m
+ [m
+   const shouldTweakAndroidSpacing =[m
+[31m-    androidLike && viewport.w <= 450 && viewport.ratio >= 1.85;[m
+[32m+[m[32m    androidLike &&[m
+[32m+[m[32m    viewport.w <= 450 &&[m
+[32m+[m[32m    viewport.ratio >= 1.85 &&[m
+[32m+[m[32m    !layoutConfig.ultraCompact;[m
+ [m
+   const androidPushPx = shouldTweakAndroidSpacing[m
+[31m-    ? Math.round(clamp((viewport.h - 680) * 0.7, 16, 74))[m
+[32m+[m[32m    ? Math.round(clamp((viewport.h - 680) * 0.4, 8, 32))[m
+     : 0;[m
+ [m
+[32m+[m[32m  const controlButtonBaseStyle: React.CSSProperties = {[m
+[32m+[m[32m    width: `${layoutConfig.buttonSize}px`,[m
+[32m+[m[32m    height: `${layoutConfig.buttonSize}px`,[m
+[32m+[m[32m    minWidth: `${layoutConfig.buttonSize}px`,[m
+[32m+[m[32m    minHeight: `${layoutConfig.buttonSize}px`,[m
+[32m+[m[32m    borderRadius: `${Math.max(10, Math.round(layoutConfig.buttonSize * 0.18))}px`,[m
+[32m+[m[32m  };[m
+[32m+[m
+ 
