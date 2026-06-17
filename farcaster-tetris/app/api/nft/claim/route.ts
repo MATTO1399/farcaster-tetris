@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
     const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
     const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY;
     const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS;
+    const NFT_NAME = process.env.NFT_NAME || 'FARTETRIS First Play';
     const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://farcaster-tetris.vercel.app';
 
     if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     const domain = {
-      name: 'FirstPlayNFT',
+      name: NFT_NAME,
       version: '1',
       chainId: 84532,
       verifyingContract: CONTRACT_ADDRESS!,
