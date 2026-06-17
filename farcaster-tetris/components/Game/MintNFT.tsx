@@ -1,91 +1,142 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useWriteContract, useWaitForTransactionReceipt, usePublicClient, useAccount, useSwitchChain } from 'wagmi';
-import { ethers } from 'ethers';
-import { baseSepolia } from 'wagmi/chains'; // ★ネットワーク切り替え用
+import React, { useState, useEffect } from 'react';
+import {
+  useAccount,
+  useChainId,
+  useSwitchChain,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+} from 'wagmi';
 
-interface MintNFTProps { address: string; score: number; }
+const FIRST_PLAY_NFT_ABI = [
+  {
+    type: 'function',
+    name: 'claim',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'deadline', type: 'uint256' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'signature', type: 'bytes' },
+    ],
+    outputs: [
+      { name: 'tokenId', type: 'uint256' },
+    ],
+  },
+] as const;
 
-const MintNFT: React.FC<MintNFTProps> = ({ address: propsAddress, score }) => {
-  const { chainId, isConnected } = useAccount();
-  const { switchChain } = useSwitchChain(); // ★ネットワーク切り替え用
-  const publicClient = usePublicClient();
-  const { writeContract, data: hash, isPending: isMinting } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isMintSuccess } = useWaitForTransactionReceipt({ hash });
-  
-  const [nftToMint, setNftToMint] = useState<string | null>("First_NFT");
-  const TARGET_CHAIN_ID = 84532; // Base Sepolia
+const TARGET_CHAIN_ID = 84532; // Base Sepolia
 
-  // 所持チェックロジック (GitHubの最新版)
-  const checkOwnership = useCallback(async () => {
-    if (!propsAddress || !publicClient) return;
-    try {
-      const nftAddress = process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS as `0x${string}`;
-      const campaignTextBase = process.env.NEXT_PUBLIC_NFT_CAMPAIGN_TEXT || "FIRST_PLAY_V1";
-      const abi = [{ "inputs": [{ "name": "campaignId", "type": "bytes32" }, { "name": "user", "type": "address" }], "name": "hasClaimed", "outputs": [{ "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" }] as const;
-      const firstId = ethers.keccak256(ethers.toUtf8Bytes(`${campaignTextBase}_First_NFT`));
-      let hasFirst = false;
-      try { hasFirst = await publicClient.readContract({ address: nftAddress, abi, functionName: 'hasClaimed', args: [firstId as `0x${string}`, propsAddress as `0x${string}`] }); } catch { hasFirst = false; }
-      if (!hasFirst) { setNftToMint("First_NFT"); }
-      else {
-        const thresholds = [10000, 7500, 5000, 3000, 2000, 1000, 100];
-        let found = null;
-        for (const t of thresholds) {
-          if (score >= t) {
-            const label = `score${t}_NFT`;
-            const cId = ethers.keccak256(ethers.toUtf8Bytes(`${campaignTextBase}_${label}`));
-            let hasS = false;
-            try { hasS = await publicClient.readContract({ address: nftAddress, abi, functionName: 'hasClaimed', args: [cId as `0x${string}`, propsAddress as `0x${string}`] }); } catch { hasS = false; }
-            if (!hasS) { found = label; break; }
-          }
-        }
-        setNftToMint(found);
-      }
-    } catch (e) { console.error(e); }
-  }, [propsAddress, score, publicClient]);
+type Props = {
+  score: number;
+  onMinted?: (tokenId: number) => void;
+};
 
-  useEffect(() => { void checkOwnership(); }, [checkOwnership]);
+export default function MintNFT({ score, onMinted }: Props) {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContract, data: txHash, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>('');
+
+  useEffect(() => {
+    if (isSuccess && txHash) {
+      setStatus('ミント完了！🎉');
+      if (onMinted) onMinted(1);
+    }
+  }, [isSuccess, txHash, onMinted]);
 
   const handleMint = async () => {
-    // ★ ネットワークチェック
-    if (chainId !== TARGET_CHAIN_ID) {
-      if (confirm("ネットワークが Base Sepolia ではありません。切り替えますか？")) {
-        switchChain({ chainId: TARGET_CHAIN_ID });
-      }
+    setError(null);
+    setStatus('');
+
+    if (!isConnected || !address) {
+      setError('ウォレットを接続してください');
       return;
     }
 
+    // ステップ1: Base Sepolia に切替
+    if (chainId !== TARGET_CHAIN_ID) {
+      setStatus('Base Sepolia に切替中...');
+      try {
+        await switchChainAsync({ chainId: TARGET_CHAIN_ID });
+        // 切替成功 → ユーザーは次の処理に進む
+      } catch (e) {
+        setError('ネットワーク切替に失敗。RabbyでBase Sepoliaを手動選択してください。');
+        setStatus('');
+        return;
+      }
+    }
+
+    // ステップ2: claim API 取得
+    setStatus('署名を取得中...');
+    let data;
     try {
       const res = await fetch('/api/nft/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: propsAddress, score, requestedNft: nftToMint })
+        body: JSON.stringify({ address, score }),
       });
-      const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      data = await res.json();
+    } catch (e: any) {
+      setError('署名取得失敗: ' + (e?.message ?? e));
+      setStatus('');
+      return;
+    }
 
+    // ステップ3: コントラクト呼び出し
+    setStatus('トランザクション送信中...');
+    try {
       writeContract({
-        address: process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS as `0x${string}`,
-        abi: [{ "inputs": [{ "name": "campaignId", "type": "bytes32" }, { "name": "deadline", "type": "uint256" }, { "name": "signature", "type": "bytes" }], "name": "claim", "outputs": [], "stateMutability": "nonpayable", "type": "function" }],
+        address: data.contractAddress as `0x${string}`,
+        abi: FIRST_PLAY_NFT_ABI,
         functionName: 'claim',
-        args: [data.campaignId, BigInt(data.deadline), data.signature],
+        args: [
+          data.message.to,
+          BigInt(data.message.deadline),
+          BigInt(data.message.nonce),
+          data.signature as `0x${string}`,
+        ],
+        chainId: TARGET_CHAIN_ID,
       });
-    } catch (e) { alert("通信エラー"); }
+    } catch (e: any) {
+      setError('コントラクト呼び出し失敗: ' + (e?.message ?? e));
+      setStatus('');
+      return;
+    }
   };
 
-  if (isMintSuccess) return <div className="text-green-400 font-bold text-center py-4">ミント成功！🎉</div>;
-  if (!nftToMint) return null;
-
   return (
-    <button
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleMint(); }}
-      disabled={isMinting || isConfirming}
-      className="w-full py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-black rounded-full font-extrabold shadow-lg active:scale-95"
-    >
-      {isMinting || isConfirming ? '承認中...' : `${nftToMint} をGET!`}
-    </button>
+    <div className="flex flex-col items-center gap-3">
+      <button
+        onClick={handleMint}
+        disabled={!isConnected || isPending || isConfirming}
+        className="px-6 py-3 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-400 disabled:opacity-50"
+      >
+        {isPending || isConfirming ? '処理中...' : 'First_NFT をGET!'}
+      </button>
+      {status && <p className="text-sm text-gray-300">{status}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {isSuccess && txHash && (
+        <a
+          href={`https://sepolia.basescan.org/tx/${txHash}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-300 underline"
+        >
+          BaseScanで見る
+        </a>
+      )}
+    </div>
   );
-};
-
-export default MintNFT;
+}
