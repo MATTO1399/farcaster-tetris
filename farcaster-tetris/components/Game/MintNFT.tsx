@@ -7,6 +7,7 @@ import {
   useSwitchChain,
   useWriteContract,
   useWaitForTransactionReceipt,
+  useReadContract,
 } from 'wagmi';
 
 const FIRST_PLAY_NFT_ABI = [
@@ -20,9 +21,14 @@ const FIRST_PLAY_NFT_ABI = [
       { name: 'nonce', type: 'uint256' },
       { name: 'signature', type: 'bytes' },
     ],
-    outputs: [
-      { name: 'tokenId', type: 'uint256' },
-    ],
+    outputs: [{ name: 'tokenId', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'hasClaimed',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
   },
 ] as const;
 
@@ -45,6 +51,19 @@ export default function MintNFT({ score, onMinted }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('');
 
+  // コントラクトから hasClaimed を取得
+  // ウォレット未接続時は query を無効化（enabled: false）
+  const { data: hasClaimed } = useReadContract({
+    address: process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS as `0x${string}`,
+    abi: FIRST_PLAY_NFT_ABI,
+    functionName: 'hasClaimed',
+    args: address ? [address] : undefined,
+    chainId: TARGET_CHAIN_ID,
+    query: {
+      enabled: Boolean(address),
+    },
+  });
+
   useEffect(() => {
     if (isSuccess && txHash) {
       setStatus('ミント完了！🎉');
@@ -61,20 +80,23 @@ export default function MintNFT({ score, onMinted }: Props) {
       return;
     }
 
-    // ステップ1: Base Sepolia に切替
+    if (hasClaimed) {
+      setError('このウォレットはミント済みです');
+      return;
+    }
+
+    // ネットワーク切替
     if (chainId !== TARGET_CHAIN_ID) {
       setStatus('Base Sepolia に切替中...');
       try {
         await switchChainAsync({ chainId: TARGET_CHAIN_ID });
-        // 切替成功 → ユーザーは次の処理に進む
       } catch (e) {
-        setError('ネットワーク切替に失敗。RabbyでBase Sepoliaを手動選択してください。');
-        setStatus('');
+        setError('ネットワーク切替に失敗。');
         return;
       }
     }
 
-    // ステップ2: claim API 取得
+    // 署名取得
     setStatus('署名を取得中...');
     let data;
     try {
@@ -90,11 +112,10 @@ export default function MintNFT({ score, onMinted }: Props) {
       data = await res.json();
     } catch (e: any) {
       setError('署名取得失敗: ' + (e?.message ?? e));
-      setStatus('');
       return;
     }
 
-    // ステップ3: コントラクト呼び出し
+    // claim送信
     setStatus('トランザクション送信中...');
     try {
       writeContract({
@@ -110,11 +131,28 @@ export default function MintNFT({ score, onMinted }: Props) {
         chainId: TARGET_CHAIN_ID,
       });
     } catch (e: any) {
-      setError('コントラクト呼び出し失敗: ' + (e?.message ?? e));
-      setStatus('');
-      return;
+      setError('送信失敗: ' + (e?.message ?? e));
     }
   };
+
+  // ★ ミント済みなら別の表示に切替
+  if (hasClaimed) {
+    return (
+      <div className="flex flex-col items-center gap-3">
+        <p className="text-sm text-green-400 font-bold">
+          ✓ First_NFT ミント済み 🎉
+        </p>
+        <a
+          href={`https://sepolia.basescan.org/token/${process.env.NEXT_PUBLIC_FIRST_PLAY_NFT_ADDRESS}?a=${address}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-300 underline"
+        >
+          BaseScanで見る
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -134,7 +172,7 @@ export default function MintNFT({ score, onMinted }: Props) {
           rel="noopener noreferrer"
           className="text-xs text-blue-300 underline"
         >
-          BaseScanで見る
+          トランザクションを見る
         </a>
       )}
     </div>
