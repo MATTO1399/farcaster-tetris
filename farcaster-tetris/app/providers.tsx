@@ -19,7 +19,7 @@ const wagmiConfig = createConfig({
   },
   // ★修正: マルチプロバイダー検出をOFF
   // （window.ethereum の再定義による Cannot redefine エラーを回避）
-  multiInjectedProviderDiscovery: false,
+  multiInjectedProviderDiscovery: true,
   ssr: true,
 });
 
