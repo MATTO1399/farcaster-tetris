@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
-    "target": "es2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "moduleResolution": "node",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    "outDir": "dist"
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "declaration": true
   },
-  "include": ["scripts", "contracts", "test", "hardhat.config.cts"],
-  "exclude": ["node_modules"]
+  "include": ["./scripts", "./contracts/**/*.ts", "./test"],
+  "exclude": ["node_modules", "dist", ".next", "app", "components"]
 }

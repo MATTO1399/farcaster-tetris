@@ -1147,6 +1147,50 @@
       "artifacts": [
         "TetrisNFT"
       ]
+    },
+    "C:\\Users\\babys\\Desktop\\bot系\\farcaster-tetris-complete\\farcaster-tetris-complete\\farcaster-tetris\\contracts\\TetrisTier.sol": {
+      "lastModificationDate": 1781707072064,
+      "contentHash": "220d60af1ed4514c61f1344c8d6cab77",
+      "sourceName": "contracts/TetrisTier.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "cancun",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC721/ERC721.sol",
+        "@openzeppelin/contracts/access/Ownable.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "@openzeppelin/contracts/utils/cryptography/EIP712.sol",
+        "@openzeppelin/contracts/utils/cryptography/ECDSA.sol",
+        "@openzeppelin/contracts/utils/Strings.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.24"
+      ],
+      "artifacts": [
+        "TetrisTier"
+      ]
     }
   }
 }
