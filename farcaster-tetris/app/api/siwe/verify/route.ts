@@ -4,7 +4,7 @@ import { SiweMessage } from 'siwe';
 
 const NONCE_COOKIE_NAME = 'fartetris_siwe_nonce';
 const SESSION_COOKIE_NAME = 'fartetris_siwe_session';
-const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7日
+const SESSION_MAX_AGE = 60 * 60 * 24; // 1日
 
 type SessionPayload = {
   address: string;
